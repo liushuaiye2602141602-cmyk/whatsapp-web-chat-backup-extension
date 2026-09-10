@@ -179,6 +179,7 @@ eval(src);
     [html.includes('class="msg out"'), "html out bubble"],
     [html.includes("hello"), "html text"],
     [html.includes("avatar-fallback") || html.includes('class="avatar"'), "html avatar slot"],
+    [html.includes("background-image") && html.includes("svg+xml"), "html WA doodle bg"],
   ];
   for (const [ok, n] of htmlChecks) {
     if (!ok) {

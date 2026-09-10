@@ -254,19 +254,74 @@
 </article>`);
     }
 
-    return `<!DOCTYPE html>
+  /**
+   * Approximate WhatsApp light doodle wallpaper (inline SVG, no network).
+   * Beige base #EFE7DE + faint line-art icons.
+   */
+  const WA_BG_SVG = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="960" viewBox="0 0 540 960">
+  <rect width="540" height="960" fill="#efe7de"/>
+  <g fill="none" stroke="#d0c4b4" stroke-width="1.2" opacity="0.55">
+    <circle cx="60" cy="70" r="14"/><path d="M52 70h16M60 62v16"/>
+    <rect x="140" y="40" width="22" height="28" rx="4"/><circle cx="151" cy="78" r="3"/>
+    <path d="M240 48c8-10 28-10 36 0-8 18-28 18-36 0z"/>
+    <circle cx="360" cy="55" r="16"/><path d="M352 55h16M360 47v16"/>
+    <path d="M450 40l18 32h-36z"/>
+    <path d="M40 160h30v22H40zM48 160v-8a7 7 0 0 1 14 0v8"/>
+    <circle cx="160" cy="175" r="12"/><path d="M160 167v16"/>
+    <path d="M250 155c20 0 20 30 0 30s-20-30 0-30z"/>
+    <rect x="340" y="150" width="28" height="18" rx="3"/><path d="M348 158h12"/>
+    <path d="M460 150v36M448 162h24"/>
+    <circle cx="70" cy="280" r="18"/><path d="M62 280h16M70 272v16"/>
+    <path d="M150 260l20 40h-40z"/>
+    <rect x="240" y="265" width="32" height="22" rx="6"/>
+    <path d="M340 260c12-8 28 4 20 20-14 8-28-4-20-20z"/>
+    <circle cx="460" cy="280" r="10"/>
+    <path d="M50 400h36l-18 28z"/>
+    <circle cx="170" cy="410" r="14"/>
+    <rect x="250" y="395" width="24" height="30" rx="3"/>
+    <path d="M350 400c18 0 18 24 0 24"/>
+    <path d="M450 395v30M438 410h24"/>
+    <circle cx="80" cy="520" r="12"/>
+    <path d="M160 505l22 30h-44z"/>
+    <rect x="250" y="508" width="30" height="20" rx="4"/>
+    <path d="M350 510h28v24h-28z"/>
+    <circle cx="460" cy="520" r="16"/><path d="M452 520h16"/>
+    <path d="M60 640c10-16 30-16 40 0-10 16-30 16-40 0z"/>
+    <rect x="160" y="625" width="26" height="26" rx="4"/>
+    <circle cx="270" cy="640" r="14"/>
+    <path d="M350 625v30M338 640h24"/>
+    <path d="M450 630l16 24h-32z"/>
+    <circle cx="70" cy="760" r="15"/>
+    <path d="M150 745h32v24h-32z"/>
+    <path d="M250 750c20 0 20 28 0 28"/>
+    <rect x="340" y="748" width="28" height="20" rx="5"/>
+    <circle cx="460" cy="760" r="12"/><path d="M460 752v16"/>
+    <path d="M55 880l18 28h-36z"/>
+    <circle cx="160" cy="890" r="13"/>
+    <rect x="240" y="875" width="30" height="24" rx="4"/>
+    <path d="M350 880h26v20h-26z"/>
+    <path d="M450 875v30M438 890h24"/>
+  </g>
+</svg>`)}`;
+
+  return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escHtml(headerTitle)}</title>
 <style>
-  :root { --bg:#e5ddd5; --in:#fff; --out:#d9fdd3; --ink:#111b21; --muted:#667781; }
+  :root { --bg:#efe7de; --in:#fff; --out:#d9fdd3; --ink:#111b21; --muted:#667781; }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: var(--bg); color: var(--ink);
+    color: var(--ink);
+    background-color: var(--bg);
+    background-image: url("${WA_BG_SVG}");
+    background-repeat: repeat;
+    background-size: 540px 960px;
   }
   .top {
     position: sticky; top: 0; z-index: 2;
@@ -416,7 +471,7 @@ ${cards.join("\n")}
      */
     async toZip(chat, messages, mediaFiles, onProgress, opts = {}) {
       const zip = new WAZip.ZipWriter();
-      const base = safeFilename(chat.title || chat.chatName);
+      const base = `${safeFilename(chat.title || chat.chatName)} - WhatsApp`;
       if (onProgress) onProgress("构建文档…", 0, 1);
       const md = this.toMarkdown(chat, messages, {
         mediaMode: "relative",
@@ -597,7 +652,7 @@ ${cards.join("\n")}
         if (dupes > 0 && onProgress) {
           onProgress(`${label}: 去重 ${dupes} 条`);
         }
-        const base = safeFilename(chatMeta.title);
+        const base = `${safeFilename(chatMeta.title)} - WhatsApp`;
         const stamp = new Date().toISOString().slice(0, 10);
 
         let mediaFiles = [];

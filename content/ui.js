@@ -34,8 +34,15 @@
     state: STATE,
     panel: null,
     toolbarBtn: null,
+    floatBtn: null,
 
+    /** Two fixed entry points: (1) chat header action bar (2) floating edge button */
     ensureToolbarButton() {
+      this.ensureHeaderButton();
+      this.ensureFloatingButton();
+    },
+
+    ensureHeaderButton() {
       if (this.toolbarBtn && document.contains(this.toolbarBtn)) return;
       const header =
         document.querySelector("#main header") ||
@@ -43,22 +50,31 @@
         document.querySelector("header");
       if (!header) return;
 
+      // Prefer the right-side icon cluster (call / video / search / more)
       let action = null;
-      const buttons = Array.from(header.querySelectorAll('[role="button"], button, div[title]'));
-      const parents = new Map();
-      for (const b of buttons) {
-        const p = b.parentElement;
-        if (!p) continue;
-        parents.set(p, (parents.get(p) || 0) + 1);
+      const candidates = Array.from(header.querySelectorAll("div")).filter((div) => {
+        const btns = div.querySelectorAll('[role="button"], button');
+        if (btns.length < 2) return false;
+        // right-ish cluster
+        const r = div.getBoundingClientRect();
+        const h = header.getBoundingClientRect();
+        return r.left > h.left + h.width * 0.45;
+      });
+      candidates.sort((a, b) => {
+        const sa = a.querySelectorAll('[role="button"], button').length;
+        const sb = b.querySelectorAll('[role="button"], button').length;
+        return sb - sa;
+      });
+      action = candidates[0] || null;
+      if (!action) {
+        action = header.querySelector('[role="button"]')?.parentElement || header;
       }
-      const ranked = [...parents.entries()].sort((a, b) => b[1] - a[1]);
-      if (ranked.length) action = ranked[0][0];
-      if (!action) action = header;
 
       const btn = el("button", {
         type: "button",
         class: "wabk-toolbar-btn wabk-green",
-        title: "WA Chats Backup Pro",
+        id: "wabk-header-btn",
+        title: "WA Chats Backup Pro — 打开面板",
         "aria-label": "WA Chats Backup Pro",
         onclick: (e) => {
           e.preventDefault();
@@ -68,12 +84,37 @@
       });
       btn.innerHTML = `<span class="wabk-icon"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm.5-13H11v6l5.2 3.1.8-1.3-4.5-2.6z"/></svg></span>`;
       try {
-        if (action.childNodes.length) action.insertBefore(btn, action.lastChild);
+        // sit with other header icons, before overflow "⋮"
+        const last = action.lastElementChild;
+        if (last) action.insertBefore(btn, last);
         else action.appendChild(btn);
       } catch {
-        header.appendChild(btn);
+        try {
+          header.appendChild(btn);
+        } catch {
+          /* ignore */
+        }
       }
       this.toolbarBtn = btn;
+    },
+
+    ensureFloatingButton() {
+      if (this.floatBtn && document.contains(this.floatBtn)) return;
+      const btn = el("button", {
+        type: "button",
+        class: "wabk-float-btn",
+        id: "wabk-float-btn",
+        title: "WA Chats Backup Pro",
+        "aria-label": "WA Chats Backup Pro",
+        onclick: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.togglePanel();
+        },
+      });
+      btn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm.5-13H11v6l5.2 3.1.8-1.3-4.5-2.6z"/></svg>`;
+      document.body.appendChild(btn);
+      this.floatBtn = btn;
     },
 
     buildPanel() {
