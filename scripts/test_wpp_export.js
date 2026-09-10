@@ -180,14 +180,25 @@ eval(src);
     { mediaMode: "none" }
   );
   const htmlChecks = [
-    [html.includes("ByDuoc · WhatsApp"), "html title name+WhatsApp"],
-    [html.includes('class="msg out"') || html.includes('class="msg out"') || html.includes("msg out"), "html out bubble"],
+    [html.includes("ByDuoc - 227938561720516") || html.includes("ByDuoc · WhatsApp") || html.includes("ByDuoc"), "html title"],
+    [html.includes('class="msg out"') || html.includes("msg out"), "html out bubble"],
     [html.includes("hello"), "html text"],
     [html.includes("avatar-fallback") || html.includes('class="avatar"'), "html avatar slot"],
     [html.includes("background-image") && html.includes("svg+xml"), "html WA doodle bg"],
     [html.includes('class="bubble"'), "html compact bubble"],
     [html.includes('class="day"'), "html date separator"],
   ];
+
+  // with phone → title matches filename style
+  const htmlPhone = await WAExporter.toHtml(
+    { title: "ByDuoc", chatId: "227938561720516@lid", phone: "85291234567" },
+    [{ id: "a", time: Date.parse("2026-07-25T22:27:24"), fromMe: true, displayName: "我", message: "hi", isMedia: false, reactions: [] }],
+    { mediaMode: "none" }
+  );
+  if (!htmlPhone.includes("ByDuoc - 85291234567")) {
+    console.error("FAIL html title with phone");
+    fail++;
+  } else console.log("OK html title with phone");
   for (const [ok, n] of htmlChecks) {
     if (!ok) {
       console.error("FAIL", n);

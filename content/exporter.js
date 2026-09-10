@@ -88,12 +88,22 @@
     return `${mediaKindLabel(m)}_${String(index).padStart(3, "0")}.${defaultExt(m)}`;
   }
 
+  /** Display title aligned with export filename: 「名字 - 号码」 */
+  function displayTitle(chat) {
+    const name = chat.title || chat.chatName || "WhatsApp Chat";
+    const base = exportBaseName(name, chat.chatId || chat.id, chat.phone);
+    // exportBaseName returns name only when no phone — then keep · WhatsApp for readability
+    if (base === name) return `${name} · WhatsApp`;
+    return base;
+  }
+
   function buildMarkdownHeader(chat, messages, mediaCount) {
     const name = chat.title || chat.chatName || "WhatsApp Chat";
-    const title = `${name} · WhatsApp`;
+    const title = displayTitle(chat);
     const rows = [
       ["聊天", name],
       ["Chat ID", chat.chatId || chat.id || ""],
+      ["WhatsApp 号码", chat.phone || ""],
       ["导出时间", formatNow()],
       ["消息数", String(messages.length)],
       ["媒体数", String(mediaCount)],
@@ -219,7 +229,7 @@
     const mediaMode = opts.mediaMode || "none";
     const mediaMap = opts.mediaMap || new Map();
     const contactName = chat.title || chat.chatName || "WhatsApp Chat";
-    const headerTitle = `${contactName} · WhatsApp`;
+    const headerTitle = displayTitle(chat);
     const avatar = opts.avatarDataURL || "";
     const cards = [];
     let mediaIdx = 0;
@@ -481,7 +491,7 @@
     }
     <div class="info">
       <h1>${escHtml(headerTitle)}</h1>
-      <p>${escHtml(chat.chatId || chat.id || "")} · ${messages.length} 条 · 导出 ${escHtml(formatNow())}</p>
+      <p>${escHtml(chat.phone || chat.chatId || chat.id || "")} · ${messages.length} 条 · 导出 ${escHtml(formatNow())}</p>
     </div>
   </div>
   <div class="thread">
@@ -497,6 +507,7 @@ ${cards.join("\n")}
     formatTime,
     dedupeMessages,
     exportBaseName,
+    displayTitle,
     toHtml,
 
     toMarkdown(chat, messages, opts = {}) {
