@@ -62,9 +62,18 @@
     return formatTime(Date.now());
   }
 
-  function whoLabel(m) {
+  function whoLabel(m, chat) {
     if (m.fromMe) return "我";
-    return m.displayName || m.formattedName || m.phone || "联系人";
+    let name = m.displayName || m.formattedName || "";
+    // Strip LID-looking labels (long digits from @lid)
+    if (name && /^\d{10,}$/.test(name) && !(chat && chat.phone === name)) {
+      name = "";
+    }
+    if (name && name !== "联系人") return name;
+    if (m.phone) return m.phone;
+    if (chat && chat.phone) return chat.phone;
+    if (chat && chat.title && chat.title !== chat.chatId) return chat.title;
+    return "联系人";
   }
 
   function mediaKindLabel(m) {
@@ -121,9 +130,9 @@
     return md.join("\n");
   }
 
-  function messageMarkdown(m, mediaMode, filename) {
+  function messageMarkdown(m, mediaMode, filename, chat) {
     const lines = [];
-    const who = whoLabel(m);
+    const who = whoLabel(m, chat);
     const time = formatTime(m.time);
     lines.push(`**${who} · ${time}**`);
     lines.push("");
@@ -244,7 +253,7 @@
     };
 
     for (const m of messages) {
-      const who = whoLabel(m);
+      const who = whoLabel(m, chat);
       const time = formatTime(m.time).split(" ").slice(1).join(" ") || formatTime(m.time);
       const body = (m.message || m.caption || "").trim();
       const mediaHtml = [];
@@ -528,7 +537,8 @@ ${cards.join("\n")}
           messageMarkdown(
             m,
             mediaMode,
-            m.isMedia || m._rawHasMedia ? mediaFilename(m, mediaIdx) : null
+            m.isMedia || m._rawHasMedia ? mediaFilename(m, mediaIdx) : null,
+            chat
           )
         );
         parts.push("", "---", "");
@@ -546,7 +556,7 @@ ${cards.join("\n")}
         "",
       ];
       for (const m of messages) {
-        lines.push(`[${formatTime(m.time) || "?"}] ${whoLabel(m)}:`);
+        lines.push(`[${formatTime(m.time) || "?"}] ${whoLabel(m, chat)}:`);
         if (m.message || m.caption) lines.push(m.message || m.caption);
         if (m.isMedia || m._rawHasMedia) lines.push(`  <${mediaKindLabel(m)}> ${mediaFilename(m, 0)}`);
         if (m.reactions && m.reactions.length) {
@@ -568,7 +578,7 @@ ${cards.join("\n")}
           messages: messages.map((m) => ({
             id: m.id,
             fromMe: !!m.fromMe,
-            sender: whoLabel(m),
+            sender: whoLabel(m, chat),
             time: m.time || null,
             type: m.type,
             text: m.message || m.caption || "",
@@ -781,7 +791,21 @@ ${cards.join("\n")}
 
         const rawCount = bundle.items.length;
         let messages = dedupeMessages(bundle.items);
-        const dupes = rawCount - messages.length;
+        // Stamp 1:1 incoming names with chat identity (avoid LID in bubbles)
+        const peerName = chatMeta.title || chat.name || "";
+        const peerPhone = chatMeta.phone || chat.phone || bundle.phone || "";
+        messages = messages.map((m) => {
+          if (m.fromMe) return m;
+          const looksLikeLid = !m.displayName || /^\d{10,}$/.test(String(m.displayName));
+          if (!looksLikeLid) return m;
+          return {
+            ...m,
+            displayName: peerName || peerPhone || m.displayName,
+            formattedName: peerName || peerPhone || m.formattedName,
+            phone: peerPhone || m.phone,
+          };
+        });
+        const dupes = rawCount - bundle.items.length;
         if (dupes > 0 && onProgress) {
           onProgress(`${label}: 去重 ${dupes} 条`);
         }

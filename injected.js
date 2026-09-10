@@ -27,6 +27,65 @@
     return s.split("@")[0].split(":")[0] || "";
   }
 
+  function isLidJid(jid) {
+    return /@lid\b/i.test(String(jid || ""));
+  }
+
+  function normalizeMessage(msg, chatHint) {
+    const id = messageId(msg);
+    const type = (msg && msg.type) || "chat";
+    const fromMe = !!(msg && msg.id && msg.id.fromMe);
+    const author = msg && (msg.author || msg.from || msg.to || "");
+    const isImage = type === "image" || type === "sticker";
+    const isVideo = type === "video";
+    const isAudio = type === "audio" || type === "ptt";
+    const isDocument = type === "document";
+    const isMedia = !!(isImage || isVideo || isAudio || isDocument || (msg && msg.hasMedia));
+
+    const timeMs = (msg && (msg.t || msg.timestamp || msg.timestampUnix)) || 0;
+    const time = typeof timeMs === "number" && timeMs < 1e12 ? timeMs * 1000 : timeMs;
+
+    // Only use reactions already on the model — never fan out getReactions per message.
+    const inline = mapReactions(msg && msg.reactions);
+
+    // 1:1 chat: prefer chat contact name/phone over raw LID from message author
+    let displayName = "";
+    let phone = "";
+    if (fromMe) {
+      displayName = "我";
+    } else {
+      phone = phoneOf(author);
+      if (isLidJid(author) || (phone && phone.length > 12 && !/@c\.us|@s\.whatsapp\.net/i.test(String(author)))) {
+        // LID — use chat-level identity when available
+        displayName = (chatHint && chatHint.name) || "";
+        phone = (chatHint && chatHint.phone) || "";
+      } else {
+        displayName = phone || "";
+      }
+    }
+
+    return {
+      id,
+      time,
+      type,
+      fromMe,
+      displayName,
+      formattedName: displayName,
+      phone,
+      reactions: inline,
+      isMedia,
+      isImage,
+      isAudio,
+      isVideo,
+      isDocument,
+      message: type === "chat" ? msg.body || "" : "",
+      caption: msg && msg.caption ? msg.caption : "",
+      filename: (msg && msg.filename) || "",
+      size: (msg && msg.size) || 0,
+      _rawHasMedia: !!(msg && msg.hasMedia),
+    };
+  }
+
   function mapReactions(list) {
     if (!Array.isArray(list)) return [];
     return list.map((r) => ({
@@ -63,45 +122,6 @@
     return "";
   }
 
-  function normalizeMessage(msg) {
-    const id = messageId(msg);
-    const type = (msg && msg.type) || "chat";
-    const fromMe = !!(msg && msg.id && msg.id.fromMe);
-    const author = msg && (msg.author || msg.from || msg.to || "");
-    const isImage = type === "image" || type === "sticker";
-    const isVideo = type === "video";
-    const isAudio = type === "audio" || type === "ptt";
-    const isDocument = type === "document";
-    const isMedia = !!(isImage || isVideo || isAudio || isDocument || (msg && msg.hasMedia));
-
-    const timeMs = (msg && (msg.t || msg.timestamp || msg.timestampUnix)) || 0;
-    const time = typeof timeMs === "number" && timeMs < 1e12 ? timeMs * 1000 : timeMs;
-
-    // Only use reactions already on the model — never fan out getReactions per message.
-    const inline = mapReactions(msg && msg.reactions);
-
-    return {
-      id,
-      time,
-      type,
-      fromMe,
-      displayName: fromMe ? "我" : phoneOf(author) || "",
-      formattedName: fromMe ? "我" : phoneOf(author) || "",
-      phone: phoneOf(author),
-      reactions: inline,
-      isMedia,
-      isImage,
-      isAudio,
-      isVideo,
-      isDocument,
-      message: type === "chat" ? msg.body || "" : "",
-      caption: msg && msg.caption ? msg.caption : "",
-      filename: (msg && msg.filename) || "",
-      size: (msg && msg.size) || 0,
-      _rawHasMedia: !!(msg && msg.hasMedia),
-    };
-  }
-
   async function getMessages(params) {
     const WPP = getWPP();
     if (!WPP || !WPP.chat || !WPP.chat.getMessages) return null;
@@ -119,8 +139,24 @@
         console.warn("[WABK] getMessages failed", chat.id, e);
       }
       if (!Array.isArray(raw)) raw = [];
-      const items = raw.map(normalizeMessage).filter((m) => m.id || m.message || m.caption);
-      out.push({ chatId: chat.id, chatName: chat.name || "", items });
+      // 1:1: attach chat name/phone so bubbles don't show raw LID
+      const chatHint = { name: chat.name || "", phone: chat.phone || "" };
+      // resolve contact once per chat if phone missing
+      if (!chatHint.phone && chat.id && !String(chat.id).includes("@g.us")) {
+        try {
+          const info = await getContactInfo(chat.id);
+          if (info) {
+            if (info.name) chatHint.name = chatHint.name || info.name;
+            if (info.phone) chatHint.phone = info.phone;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      const items = raw
+        .map((msg) => normalizeMessage(msg, chatHint))
+        .filter((m) => m.id || m.message || m.caption);
+      out.push({ chatId: chat.id, chatName: chat.name || chatHint.name || "", phone: chatHint.phone || "", items });
     }
     return out;
   }

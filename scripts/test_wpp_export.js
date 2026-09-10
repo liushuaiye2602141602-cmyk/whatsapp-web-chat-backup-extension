@@ -206,6 +206,32 @@ eval(src);
     } else console.log("OK", n);
   }
 
+  // sender label should not be LID
+  const mdWithLid = WAExporter.toMarkdown(
+    { title: "ByDuoc", chatId: "227938561720516@lid", phone: "85291234567" },
+    [
+      {
+        id: "x",
+        time: Date.parse("2026-07-25T22:27:24"),
+        fromMe: false,
+        displayName: "227938561720516",
+        message: "Hello",
+        isMedia: false,
+        reactions: [],
+      },
+    ],
+    { mediaMode: "names" }
+  );
+  if (mdWithLid.includes("**227938561720516") || mdWithLid.includes("**227938561720516 ·")) {
+    console.error("FAIL md should not show LID as sender");
+    fail++;
+  } else if (mdWithLid.includes("**ByDuoc") || mdWithLid.includes("**85291234567")) {
+    console.log("OK md sender is contact name/phone not LID");
+  } else {
+    console.error("FAIL unexpected sender in md", mdWithLid.slice(0, 400));
+    fail++;
+  }
+
   // export filename base includes WA number / chat id
   const baseName = WAExporter.exportBaseName("ByDuoc", "227938561720516@lid", "85291234567");
   if (baseName !== "ByDuoc - 85291234567") {
