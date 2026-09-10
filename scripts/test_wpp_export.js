@@ -176,10 +176,12 @@ eval(src);
   );
   const htmlChecks = [
     [html.includes("ByDuoc · WhatsApp"), "html title name+WhatsApp"],
-    [html.includes('class="msg out"'), "html out bubble"],
+    [html.includes('class="msg out"') || html.includes('class="msg out"') || html.includes("msg out"), "html out bubble"],
     [html.includes("hello"), "html text"],
     [html.includes("avatar-fallback") || html.includes('class="avatar"'), "html avatar slot"],
     [html.includes("background-image") && html.includes("svg+xml"), "html WA doodle bg"],
+    [html.includes('class="bubble"'), "html compact bubble"],
+    [html.includes('class="day"'), "html date separator"],
   ];
   for (const [ok, n] of htmlChecks) {
     if (!ok) {

@@ -199,12 +199,29 @@
     const avatar = opts.avatarDataURL || "";
     const cards = [];
     let mediaIdx = 0;
+    let prevFromMe = null;
+    let prevDay = "";
+
+    const dayLabel = (ms) => {
+      if (!ms) return "";
+      const d = new Date(Number(ms));
+      if (Number.isNaN(d.getTime())) return "";
+      return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+    };
 
     for (const m of messages) {
       const who = whoLabel(m);
-      const time = formatTime(m.time);
+      const time = formatTime(m.time).split(" ").slice(1).join(" ") || formatTime(m.time);
       const body = (m.message || m.caption || "").trim();
       const mediaHtml = [];
+
+      // WhatsApp-style date separator
+      const day = dayLabel(m.time);
+      if (day && day !== prevDay) {
+        cards.push(`<div class="day"><span>${escHtml(day)}</span></div>`);
+        prevDay = day;
+        prevFromMe = null;
+      }
 
       if (m.isMedia || m._rawHasMedia) {
         mediaIdx += 1;
@@ -219,39 +236,56 @@
 
         if (mediaKindLabel(m) === "image" && src) {
           mediaHtml.push(
-            `<div class="media"><a href="${escHtml(src)}" target="_blank" download="${escHtml(name)}"><img src="${escHtml(src)}" alt="${escHtml(name)}" loading="lazy"></a><div class="media-name">${escHtml(name)}</div></div>`
+            `<div class="media"><a href="${escHtml(src)}" target="_blank" download="${escHtml(name)}"><img src="${escHtml(src)}" alt="${escHtml(name)}" loading="lazy"></a></div>`
           );
         } else if (mediaKindLabel(m) === "video" && src) {
           mediaHtml.push(
-            `<div class="media"><video controls playsinline src="${escHtml(src)}"></video><div class="media-name">${escHtml(name)}</div></div>`
+            `<div class="media"><video controls playsinline src="${escHtml(src)}"></video></div>`
           );
         } else if (mediaKindLabel(m) === "audio" && src) {
           mediaHtml.push(
-            `<div class="media"><audio controls src="${escHtml(src)}"></audio><div class="media-name">${escHtml(name)}</div></div>`
+            `<div class="media"><audio controls src="${escHtml(src)}"></audio></div>`
           );
         } else if (src) {
           mediaHtml.push(
             `<div class="media file"><a href="${escHtml(src)}" download="${escHtml(name)}">📎 ${escHtml(name)}</a></div>`
           );
         } else {
-          mediaHtml.push(
-            `<div class="media file">📎 ${escHtml(name)}</div>`
-          );
+          mediaHtml.push(`<div class="media file">📎 ${escHtml(name)}</div>`);
         }
+        if (body) mediaHtml.push(`<div class="caption">${escHtml(body).replace(/\n/g, "<br>")}</div>`);
       }
+
+      const bodyHtml =
+        !m.isMedia && !m._rawHasMedia && body
+          ? `<div class="text">${escHtml(body).replace(/\n/g, "<br>")}</div>`
+          : "";
+
+      // Group sender name only on first incoming of a run (like WA groups / export tools)
+      const showName = !m.fromMe && prevFromMe !== false;
+      const nameHtml = showName
+        ? `<div class="who">${escHtml(who)}</div>`
+        : "";
 
       const rx =
         m.reactions && m.reactions.length
           ? `<div class="rx">${escHtml(m.reactions.map((r) => r.text).join(" "))}</div>`
           : "";
 
+      const tail = prevFromMe === m.fromMe ? " tight" : "";
+
       cards.push(`
-<article class="msg ${m.fromMe ? "out" : "in"}">
-  <header><span class="who">${escHtml(who)}</span><span class="time">${escHtml(time)}</span></header>
-  ${body ? `<div class="text">${escHtml(body).replace(/\n/g, "<br>")}</div>` : ""}
-  ${mediaHtml.join("\n")}
-  ${rx}
+<article class="msg ${m.fromMe ? "out" : "in"}${tail}">
+  <div class="bubble">
+    ${nameHtml}
+    ${mediaHtml.join("\n")}
+    ${bodyHtml}
+    ${rx}
+    <div class="meta"><span class="time">${escHtml(time)}</span></div>
+  </div>
 </article>`);
+
+      prevFromMe = m.fromMe;
     }
 
   /**
@@ -346,26 +380,72 @@
   .top h1 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
   .top p { margin: 2px 0 0; font-size: 12px; opacity: .92; }
   .thread {
-    max-width: 900px; margin: 0 auto; padding: 16px 16px 48px;
-    display: flex; flex-direction: column; gap: 10px;
+    max-width: 920px; margin: 0 auto; padding: 14px 16px 48px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .day {
+    align-self: center; margin: 12px 0 8px;
+  }
+  .day span {
+    background: #fff; color: #54656f;
+    font-size: 12px; font-weight: 500;
+    padding: 5px 12px; border-radius: 8px;
+    box-shadow: 0 1px 0.5px rgba(11,20,26,.13);
   }
   .msg {
-    max-width: min(72%, 640px); border-radius: 8px; padding: 8px 10px 6px;
+    display: flex;
+    max-width: min(72%, 640px);
+    align-self: flex-start;
+  }
+  .msg.out { align-self: flex-end; }
+  .msg.tight { margin-top: -2px; }
+  .bubble {
+    position: relative;
+    background: var(--in);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 6px 8px 5px;
     box-shadow: 0 1px 0.5px rgba(11,20,26,.13);
-    align-self: flex-start; background: var(--in);
+    min-width: 80px;
   }
-  .msg.out { align-self: flex-end; background: var(--out); }
-  .msg header {
-    display: flex; justify-content: space-between; gap: 12px;
-    font-size: 11px; color: var(--muted); margin-bottom: 4px;
+  .msg.out .bubble { background: var(--out); }
+  /* small tail */
+  .msg.in:not(.tight) .bubble::before {
+    content: "";
+    position: absolute; top: 0; left: -7px;
+    border-width: 0 8px 8px 0; border-style: solid;
+    border-color: transparent var(--in) transparent transparent;
   }
-  .text { font-size: 14.2px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
-  .media { margin-top: 8px; }
-  .media img, .media video { max-width: 100%; border-radius: 6px; display: block; }
-  .media audio { width: 100%; }
-  .media-name { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-all; }
-  .media.file a { color: #027eb5; text-decoration: none; font-size: 13px; }
-  .rx { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .msg.out:not(.tight) .bubble::after {
+    content: "";
+    position: absolute; top: 0; right: -7px;
+    border-width: 0 0 8px 8px; border-style: solid;
+    border-color: transparent transparent transparent var(--out);
+  }
+  .who {
+    font-size: 12.5px; font-weight: 600;
+    color: #00a5f4; margin: 0 0 2px 2px;
+  }
+  .text {
+    font-size: 14.2px; line-height: 1.4;
+    white-space: pre-wrap; word-break: break-word;
+    padding: 0 4px;
+  }
+  .media { margin: 2px 0 4px; }
+  .media img, .media video {
+    max-width: min(360px, 100%); border-radius: 6px; display: block;
+    background: #d9d9d9;
+  }
+  .media audio { width: min(280px, 100%); }
+  .media.file a { color: #027eb5; text-decoration: none; font-size: 13px; padding: 0 4px; }
+  .rx { margin-top: 4px; font-size: 12px; color: var(--muted); padding: 0 4px; }
+  .meta {
+    display: flex; justify-content: flex-end; align-items: center; gap: 4px;
+    margin-top: 2px; min-height: 14px;
+  }
+  .meta .time {
+    font-size: 11px; color: var(--muted);
+  }
 </style>
 </head>
 <body>
