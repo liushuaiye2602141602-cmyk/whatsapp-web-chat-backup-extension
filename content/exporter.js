@@ -1,5 +1,5 @@
 /**
- * Export builders: Markdown (primary) / ZIP (md + media) / optional JSON & TXT.
+ * Export Markdown / ZIP from WPP-normalized messages.
  */
 (function (global) {
   "use strict";
@@ -26,112 +26,53 @@
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
+  function formatTime(ms) {
+    if (!ms) return "";
+    const d = new Date(Number(ms));
+    if (Number.isNaN(d.getTime())) return String(ms);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+
   function formatNow() {
-    const d = new Date();
-    const p = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  }
-
-  function normalizeTime(t) {
-    if (!t) return "";
-    // [19:40, 8/12/2026] → 2026/8/12 19:40
-    const bracket = String(t).match(/^\[?(\d{1,2}:\d{2}(?::\d{2})?)[,\s]+(\d{1,2})\/(\d{1,2})\/(\d{4})\]?/);
-    if (bracket) {
-      const [, time, mo, dy, yr] = bracket;
-      return `${yr}/${mo}/${dy} ${time}`;
-    }
-    // ISO
-    if (/^\d{4}-\d{2}-\d{2}/.test(String(t))) {
-      try {
-        const d = new Date(t);
-        if (!Number.isNaN(d.getTime())) return formatDateTime(d);
-      } catch {
-        /* ignore */
-      }
-    }
-    return String(t).replace(/^\[|\]$/g, "").trim();
-  }
-
-  function formatDateTime(d) {
-    const p = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    return formatTime(Date.now());
   }
 
   function whoLabel(m) {
-    if (m.direction === "out") return "我";
-    return m.sender || "联系人";
+    if (m.fromMe) return "我";
+    return m.displayName || m.formattedName || m.phone || "联系人";
   }
 
-  function mdEscape(text) {
-    // Keep readability; only neutralize pathological control chars
-    return String(text ?? "").replace(/\r\n/g, "\n");
+  function mediaKindLabel(m) {
+    if (m.isImage) return "image";
+    if (m.isVideo) return "video";
+    if (m.isAudio) return "audio";
+    if (m.isDocument) return "document";
+    return m.type || "file";
   }
 
-  /**
-   * Markdown body for one message.
-   * @param {object} mediaMode 'relative' | 'names' | 'embed'
-   */
-  function messageMarkdown(m, mediaMode) {
-    const lines = [];
-    const who = whoLabel(m);
-    const time = normalizeTime(m.time);
-    const stamp = time ? `${who} · ${time}` : who;
-
-    lines.push(`**${stamp}**`);
-    lines.push("");
-
-    if (m.text) {
-      // indent multi-line as plain paragraph content
-      lines.push(mdEscape(m.text));
-    }
-
-    for (const media of m.media) {
-      if (mediaMode === "relative") {
-        const path = `media/${media.filename}`;
-        if (media.kind === "image") {
-          lines.push(`![${media.filename}](${path})`);
-        } else if (media.kind === "video") {
-          lines.push(`📹 [${media.filename}](${path})`);
-        } else if (media.kind === "audio") {
-          lines.push(`🎧 [${media.filename}](${path})`);
-        } else {
-          lines.push(`📎 [${media.filename}](${path})`);
-        }
-        if (media.note) lines.push(`<!-- ${media.note} -->`);
-      } else if (mediaMode === "embed" && media.blob && media.kind === "image" && media.blob.size < 1_500_000) {
-        // async handled by caller when needed — here just name
-        lines.push(`📷 ${media.filename}`);
-      } else {
-        if (media.kind === "image") lines.push(`📷 图片: \`${media.filename}\``);
-        else if (media.kind === "video") lines.push(`📹 视频: \`${media.filename}\``);
-        else if (media.kind === "audio") lines.push(`🎧 语音: \`${media.filename}\``);
-        else lines.push(`📎 文件: \`${media.filename}\``);
-        if (media.note) lines.push(`   _(${media.note})_`);
-      }
-    }
-
-    if (m.reactions) {
-      lines.push("");
-      lines.push(`> 反应: ${mdEscape(m.reactions)}`);
-    }
-
-    return lines.join("\n");
+  function defaultExt(m) {
+    const k = mediaKindLabel(m);
+    if (k === "image") return "jpg";
+    if (k === "video") return "mp4";
+    if (k === "audio") return "ogg";
+    return "bin";
   }
 
-  function buildMarkdownHeader(chat, messages, opts = {}) {
-    const title = chat.title || "WhatsApp Chat";
-    const chatId = chat.chatId || chat.title || "";
-    const exported = formatNow();
-    const mediaCount = messages.reduce((n, m) => n + (m.media?.length || 0), 0);
+  function mediaFilename(m, index) {
+    if (m.filename && m.filename.includes(".")) return m.filename;
+    return `${mediaKindLabel(m)}_${String(index).padStart(3, "0")}.${defaultExt(m)}`;
+  }
 
+  function buildMarkdownHeader(chat, messages, mediaCount) {
+    const title = chat.title || chat.chatName || "WhatsApp Chat";
     const rows = [
       ["聊天", title],
-      ["Chat ID", chatId],
-      ["导出时间", exported],
+      ["Chat ID", chat.chatId || chat.id || ""],
+      ["导出时间", formatNow()],
       ["消息数", String(messages.length)],
       ["媒体数", String(mediaCount)],
     ];
-
     const md = [
       `# ${title}`,
       "",
@@ -142,53 +83,97 @@
       "---",
       "",
     ];
-    if (opts.subtitle) {
-      md.splice(1, 0, `> ${opts.subtitle}`, "");
-    }
     return md.join("\n");
+  }
+
+  function messageMarkdown(m, mediaMode, filename) {
+    const lines = [];
+    const who = whoLabel(m);
+    const time = formatTime(m.time);
+    lines.push(`**${who} · ${time}**`);
+    lines.push("");
+
+    const body = (m.message || m.caption || "").trim();
+    if (body) lines.push(body);
+
+    if (m.isMedia || m._rawHasMedia) {
+      const name = filename || mediaFilename(m, 0);
+      if (mediaMode === "relative") {
+        if (mediaKindLabel(m) === "image") lines.push(`![${name}](media/${name})`);
+        else if (mediaKindLabel(m) === "video") lines.push(`📹 [${name}](media/${name})`);
+        else if (mediaKindLabel(m) === "audio") lines.push(`🎧 [${name}](media/${name})`);
+        else lines.push(`📎 [${name}](media/${name})`);
+      } else {
+        const icon =
+          mediaKindLabel(m) === "image"
+            ? "📷 图片"
+            : mediaKindLabel(m) === "video"
+              ? "📹 视频"
+              : mediaKindLabel(m) === "audio"
+                ? "🎧 语音"
+                : "📎 文件";
+        lines.push(`${icon}: \`${name}\``);
+      }
+    }
+
+    if (m.reactions && m.reactions.length) {
+      const rx = m.reactions
+        .map((r) => `${r.text}${r.senders && r.senders.length ? "(" + r.senders.join(",") + ")" : ""}`)
+        .join(" ");
+      lines.push("");
+      lines.push(`> 反应: ${rx}`);
+    }
+
+    return lines.join("\n");
   }
 
   const WAExporter = {
     safeFilename,
     downloadBlob,
-    formatNow,
+    formatTime,
 
-    /**
-     * Primary export: Markdown transcript (like Chats Backup reference fields).
-     * @param {object} chat
-     * @param {Array} messages
-     * @param {object} opts { mediaMode: 'relative'|'names', subtitle }
-     */
     toMarkdown(chat, messages, opts = {}) {
       const mediaMode = opts.mediaMode || "names";
-      const parts = [buildMarkdownHeader(chat, messages, opts)];
-
-      for (const m of messages) {
-        parts.push(messageMarkdown(m, mediaMode));
-        parts.push("");
-        parts.push("---");
-        parts.push("");
+      const mediaCount = messages.reduce(
+        (n, m) => n + (m.isMedia || m._rawHasMedia ? 1 : 0),
+        0
+      );
+      const parts = [buildMarkdownHeader(chat, messages, mediaCount)];
+      if (opts.subtitle) {
+        parts.push(`> ${opts.subtitle}`, "");
+        parts.push("---", "");
       }
-
+      let mediaIdx = 0;
+      for (const m of messages) {
+        if (m.isMedia || m._rawHasMedia) mediaIdx += 1;
+        parts.push(
+          messageMarkdown(
+            m,
+            mediaMode,
+            m.isMedia || m._rawHasMedia ? mediaFilename(m, mediaIdx) : null
+          )
+        );
+        parts.push("", "---", "");
+      }
       parts.push(`_由 WA Chats Backup Pro 导出 · ${formatNow()}_`);
       return parts.join("\n");
     },
 
     toTxt(chat, messages) {
       const lines = [
-        `Chat: ${chat.title}`,
+        `Chat: ${chat.title || chat.chatName}`,
         `Exported: ${formatNow()}`,
         `Messages: ${messages.length}`,
         "=".repeat(48),
         "",
       ];
       for (const m of messages) {
-        lines.push(`[${normalizeTime(m.time) || "?"}] ${whoLabel(m)}:`);
-        if (m.text) lines.push(m.text);
-        for (const media of m.media) {
-          lines.push(`  <${media.kind}> ${media.filename}`);
+        lines.push(`[${formatTime(m.time) || "?"}] ${whoLabel(m)}:`);
+        if (m.message || m.caption) lines.push(m.message || m.caption);
+        if (m.isMedia || m._rawHasMedia) lines.push(`  <${mediaKindLabel(m)}> ${mediaFilename(m, 0)}`);
+        if (m.reactions && m.reactions.length) {
+          lines.push("  reactions: " + m.reactions.map((r) => r.text).join(" "));
         }
-        if (m.reactions) lines.push(`  reactions: ${m.reactions}`);
         lines.push("");
       }
       return lines.join("\n");
@@ -198,24 +183,20 @@
       return JSON.stringify(
         {
           chat: {
-            title: chat.title,
-            chatId: chat.chatId || null,
+            title: chat.title || chat.chatName,
+            chatId: chat.chatId || chat.id || null,
             exportedAt: new Date().toISOString(),
           },
           messages: messages.map((m) => ({
             id: m.id,
-            direction: m.direction,
-            sender: m.sender,
-            time: normalizeTime(m.time),
-            text: m.text,
-            reactions: m.reactions,
-            media: m.media.map((x) => ({
-              kind: x.kind,
-              filename: x.filename,
-              mime: x.mime || null,
-              hasBlob: !!x.blob,
-              note: x.note || null,
-            })),
+            fromMe: !!m.fromMe,
+            sender: whoLabel(m),
+            time: m.time || null,
+            type: m.type,
+            text: m.message || m.caption || "",
+            reactions: m.reactions || [],
+            isMedia: !!(m.isMedia || m._rawHasMedia),
+            filename: m.filename || null,
           })),
         },
         null,
@@ -224,178 +205,184 @@
     },
 
     /**
-     * ZIP: chat.md (relative media links) + media files.
+     * @param {Array} mediaFiles [{filename, blob}]
      */
-    async toZip(chat, messages, onProgress) {
+    async toZip(chat, messages, mediaFiles, onProgress) {
       const zip = new WAZip.ZipWriter();
-      const base = safeFilename(chat.title);
-
-      if (onProgress) onProgress("Building Markdown…", 0, 1);
+      const base = safeFilename(chat.title || chat.chatName);
+      if (onProgress) onProgress("构建 Markdown…", 0, 1);
       const md = this.toMarkdown(chat, messages, {
         mediaMode: "relative",
-        subtitle: "媒体文件见 `media/` 目录，图片在预览器中可点击打开。",
+        subtitle: "媒体文件见 `media/` 目录。",
       });
       await zip.add(`${base}/chat.md`, md);
 
-      let i = 0;
-      let total = 0;
-      for (const m of messages) total += m.media.length;
-
       const used = new Set();
-      const missing = [];
-      for (const m of messages) {
-        for (const media of m.media) {
-          i += 1;
-          if (onProgress) onProgress(`Packing ${media.filename}`, 1 + i, 1 + total);
-          if (!media.blob) {
-            missing.push(`- ${media.kind} ${media.filename}`);
-            continue;
-          }
-          let name = media.filename || `file_${i}.bin`;
-          if (used.has(name)) {
-            const dot = name.lastIndexOf(".");
-            const stem = dot > 0 ? name.slice(0, dot) : name;
-            const ext = dot > 0 ? name.slice(dot) : "";
-            name = `${stem}_${i}${ext}`;
-          }
-          used.add(name);
-          await zip.add(`${base}/media/${name}`, media.blob);
+      let i = 0;
+      const files = mediaFiles || [];
+      for (const f of files) {
+        i += 1;
+        if (onProgress) onProgress(`打包 ${f.filename}`, i, files.length);
+        if (!f.blob) continue;
+        let name = f.filename || `file_${i}.bin`;
+        if (used.has(name)) {
+          const dot = name.lastIndexOf(".");
+          const stem = dot > 0 ? name.slice(0, dot) : name;
+          const ext = dot > 0 ? name.slice(dot) : "";
+          name = `${stem}_${i}${ext}`;
         }
+        used.add(name);
+        await zip.add(`${base}/media/${name}`, f.blob);
       }
-
-      if (missing.length) {
-        await zip.add(
-          `${base}/media/_missing.txt`,
-          `Missing media (${missing.length}):\n${missing.join("\n")}\n`
-        );
-      }
-
-      if (onProgress) onProgress("Creating ZIP…", 1 + total, 1 + total);
+      if (onProgress) onProgress("生成 ZIP…", files.length, files.length);
       return zip.build();
     },
 
     /**
-     * Export chats. Default format is Markdown.
-     * @param {Array} chats
-     * @param {object} opts { formats: ['md','zip','json','txt'], includeMedia, includeVideo, scrollRounds }
+     * WPP media result → Blob
+     * downloadMedia may return: Blob | {data,mimetype} | data URL string | null
+     */
+    mediaResultToBlob(result) {
+      if (!result) return null;
+      if (result instanceof Blob) return result;
+      if (typeof result === "string") {
+        if (result.startsWith("data:")) {
+          try {
+            const [head, b64] = result.split(",");
+            const mime = (head.match(/data:([^;]+)/) || [])[1] || "application/octet-stream";
+            const bin = atob(b64);
+            const arr = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            return new Blob([arr], { type: mime });
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      }
+      if (result.data) {
+        let b64 = result.data;
+        if (b64.startsWith("data:")) b64 = b64.split(",")[1];
+        try {
+          const bin = atob(b64);
+          const arr = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          return new Blob([arr], { type: result.mimetype || result.mimeType || "application/octet-stream" });
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    },
+
+    async fetchMediaForMessages(messages, onProgress) {
+      const files = [];
+      const mediaMsgs = messages.filter((m) => m.isMedia || m._rawHasMedia);
+      let i = 0;
+      for (const m of mediaMsgs) {
+        i += 1;
+        if (onProgress) onProgress(`下载媒体 ${i}/${mediaMsgs.length}`, i, mediaMsgs.length);
+        if (!m.id) continue;
+        let result = null;
+        try {
+          result = await WABridge.downloadMedia(m.id);
+        } catch {
+          result = null;
+        }
+        const blob = this.mediaResultToBlob(result);
+        if (!blob) {
+          files.push({ filename: mediaFilename(m, i), blob: null, missing: true });
+          continue;
+        }
+        // pick extension from mime
+        let name = mediaFilename(m, i);
+        if (blob.type) {
+          const sub = blob.type.split("/")[1] || "";
+          const map = { jpeg: "jpg", "png": "png", "webp": "webp", "mp4": "mp4", ogg: "ogg", "3gpp": "3gp" };
+          const ext = map[sub] || sub.split("+")[0] || name.split(".").pop();
+          name = name.replace(/\.[^.]+$/, "") + "." + ext;
+        }
+        files.push({ filename: name, blob });
+      }
+      return files;
+    },
+
+    /**
+     * Export one or more chats fetched via WPP bridge.
+     * @param {Array} chats [{id, name}]
+     * @param {object} opts { formats, includeMedia }
      */
     async exportChats(chats, opts, onProgress) {
-      const results = [];
       const formats = opts.formats || ["md", "zip"];
       const includeMedia = opts.includeMedia !== false;
+      const results = [];
 
-      for (let ci = 0; ci < chats.length; ci++) {
-        const chat = chats[ci];
-        const label = `[${ci + 1}/${chats.length}] ${chat.title}`;
-        if (onProgress) onProgress(`${label}: opening…`);
-
-        if (chat.listItemEl) {
-          await WADOM.clickChat(chat.listItemEl);
-        }
-        await WADOM.sleep(900);
-
-        if (onProgress) onProgress(`${label}: loading history…`);
-        const merged = new Map();
-
-        await WADOM.walkChatHistory({
-          maxSteps: opts.scrollRounds ?? 60,
-          stepPx: 700,
-          delay: 400,
-          onChunk: async (step) => {
-            if (onProgress) onProgress(`${label}: scanning window ${step}… (${merged.size} msgs)`);
-            const chunk = await WAParser.parseConversation({ includeMedia: true });
-            for (const msg of chunk) {
-              const key = msg.id || `${msg.direction}|${msg.time}|${msg.text}|${msg.sender}`;
-              if (merged.has(key)) continue;
-              if (includeMedia && msg.media.length) {
-                await WAParser.resolveMediaBlobs([msg], () => {});
-              }
-              merged.set(key, { msg, step, order: merged.size });
-            }
-          },
+      if (onProgress) onProgress("等待 WPP 就绪…");
+      const ok = await WABridge.waitReady(opts.readyTimeoutMs || 25000);
+      if (!ok) {
+        results.push({
+          chat: "-",
+          file: null,
+          messages: 0,
+          error: "WPP 未就绪：请确认已登录 WhatsApp Web 并刷新页面后重试",
         });
+        return results;
+      }
 
-        let messages = Array.from(merged.values())
-          .sort((a, b) => {
-            if (b.step !== a.step) return b.step - a.step;
-            return a.order - b.order;
-          })
-          .map((x) => x.msg);
+      if (onProgress) onProgress("读取消息…");
+      let bundles;
+      try {
+        bundles = await WABridge.getMessages(chats, -1);
+      } catch (e) {
+        results.push({
+          chat: "-",
+          file: null,
+          messages: 0,
+          error: "getMessages 失败: " + e,
+        });
+        return results;
+      }
+      if (!bundles || !bundles.length) {
+        results.push({
+          chat: "-",
+          file: null,
+          messages: 0,
+          error: "WPP 返回空消息列表",
+        });
+        return results;
+      }
+
+      for (const bundle of bundles) {
+        const chatMeta = { title: bundle.chatName, chatId: bundle.chatId, id: bundle.chatId };
+        let messages = bundle.items || [];
+        const base = safeFilename(bundle.chatName);
+        const stamp = new Date().toISOString().slice(0, 10);
 
         if (!messages.length) {
-          // last chance: parse whatever is on screen without walk
-          messages = await WAParser.parseConversation({ includeMedia: true });
-        }
-
-        if (!messages.length) {
-          let diag = "";
-          try {
-            const d = WAParser.diagnose();
-            diag = `nodes=${d.messageNodes} main=${d.main} header=${d.header} scroller=${d.hasScroller} title=${d.title || "-"}`;
-          } catch (e) {
-            diag = String(e);
-          }
-          if (onProgress) {
-            onProgress(`${label}: 解析到 0 条消息。${diag}`);
-          }
           results.push({
-            chat: chat.title,
+            chat: bundle.chatName,
             file: null,
             messages: 0,
-            error: "解析到 0 条消息，请先点开聊天并刷新页面后重试。诊断: " + diag,
+            error: "该聊天无消息",
           });
           continue;
         }
 
-        if (!includeMedia) {
-          messages = messages.map((m) => ({ ...m, media: [], hasMedia: false }));
-        } else if (opts.includeVideo === false) {
-          messages = messages.map((m) => ({
-            ...m,
-            media: m.media.filter((x) => x.kind !== "video"),
-          }));
-        }
-
-        const unresolved = messages.filter((m) => m.media.some((x) => !x.blob && x.src));
-        if (includeMedia && unresolved.length) {
-          if (onProgress) onProgress(`${label}: finalizing media…`);
-          await WAParser.resolveMediaBlobs(unresolved, (d, t, fn) => {
-            if (onProgress) onProgress(`${label}: media ${d}/${t} ${fn}`);
+        let mediaFiles = [];
+        if (includeMedia) {
+          if (onProgress) onProgress(`${bundle.chatName}: 下载媒体…`);
+          mediaFiles = await this.fetchMediaForMessages(messages, (msg, d, t) => {
+            if (onProgress) onProgress(`${bundle.chatName}: ${msg}`);
           });
+        } else {
+          messages = messages.map((m) => ({ ...m, isMedia: false, _rawHasMedia: false }));
         }
-
-        const chatMeta = {
-          title: chat.title,
-          chatId: chat.chatId || null,
-        };
-
-        // enrich chatId from DOM if missing
-        if (!chatMeta.chatId) {
-          try {
-            const header = document.querySelector("#main header");
-            const sub =
-              header?.querySelector('span[dir="auto"][class*="selectable"]') ||
-              header?.querySelectorAll("span[dir='auto']")[1];
-            const maybe = (sub?.textContent || "").trim();
-            if (maybe && maybe !== chat.title) chatMeta.chatId = maybe;
-          } catch {
-            /* ignore */
-          }
-        }
-
-        const base = safeFilename(chat.title);
-        const stamp = new Date().toISOString().slice(0, 10);
 
         if (formats.includes("md")) {
-          const md = this.toMarkdown(chatMeta, messages, {
-            mediaMode: "names",
-            subtitle: includeMedia
-              ? "媒体文件请使用 ZIP 导出以获得完整图片/视频；本文件仅列出文件名。"
-              : "未包含媒体文件。",
-          });
+          const md = this.toMarkdown(chatMeta, messages, { mediaMode: "names" });
           const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
           downloadBlob(blob, `${base}_${stamp}.md`);
-          results.push({ chat: chat.title, file: `${base}_${stamp}.md`, messages: messages.length });
+          results.push({ chat: bundle.chatName, file: `${base}_${stamp}.md`, messages: messages.length });
         }
 
         if (formats.includes("txt")) {
@@ -403,28 +390,27 @@
             type: "text/plain;charset=utf-8",
           });
           downloadBlob(blob, `${base}_${stamp}.txt`);
-          results.push({ chat: chat.title, file: `${base}_${stamp}.txt`, messages: messages.length });
+          results.push({ chat: bundle.chatName, file: `${base}_${stamp}.txt`, messages: messages.length });
         }
 
         if (formats.includes("json")) {
           const blob = new Blob([this.toJson(chatMeta, messages)], { type: "application/json" });
           downloadBlob(blob, `${base}_${stamp}.json`);
-          results.push({ chat: chat.title, file: `${base}_${stamp}.json`, messages: messages.length });
+          results.push({ chat: bundle.chatName, file: `${base}_${stamp}.json`, messages: messages.length });
         }
 
         if (formats.includes("zip")) {
-          const zipBlob = await this.toZip(chatMeta, messages, (msg, d, t) => {
-            if (onProgress) onProgress(`${label}: ${msg}`);
+          const zipBlob = await this.toZip(chatMeta, messages, mediaFiles, (msg, d, t) => {
+            if (onProgress) onProgress(`${bundle.chatName}: ${msg}`);
           });
           downloadBlob(zipBlob, `${base}_${stamp}_backup.zip`);
           results.push({
-            chat: chat.title,
+            chat: bundle.chatName,
             file: `${base}_${stamp}_backup.zip`,
             messages: messages.length,
+            media: mediaFiles.filter((f) => f.blob).length,
           });
         }
-
-        await WADOM.sleep(400);
       }
 
       return results;

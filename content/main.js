@@ -1,23 +1,21 @@
 /**
- * Bootstrap on WhatsApp Web.
+ * Bootstrap: inject WPP + UI on WhatsApp Web.
  */
 (function () {
   "use strict";
-
   if (window.__WABK_LOADED__) return;
   window.__WABK_LOADED__ = true;
 
   function boot() {
+    WABridge.inject();
     WAUI.ensureToolbarButton();
     WAUI.buildPanel();
 
-    // Keep injecting button when WA re-renders header
     const obs = new MutationObserver(() => {
       WAUI.ensureToolbarButton();
     });
     obs.observe(document.body, { childList: true, subtree: true });
 
-    // Message from popup / background
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (!msg || !msg.type) return;
       if (msg.type === "WABK_OPEN") {
@@ -30,33 +28,25 @@
         WAUI.startExport(true).then(() => sendResponse({ ok: true }));
         return true;
       }
-      if (msg.type === "WABK_EXPORT_SELECTED") {
-        WAUI.setOpen(true);
-        WAUI.startExport(false).then(() => sendResponse({ ok: true }));
-        return true;
-      }
       if (msg.type === "WABK_STATUS") {
-        sendResponse({
-          ok: true,
-          open: WAUI.state.open,
-          chats: WAUI.state.chats.length,
-          title: WADOM.getActiveChatTitle(),
+        WABridge.isMainReady().then((ready) => {
+          sendResponse({
+            ok: true,
+            open: WAUI.state.open,
+            chats: WAUI.state.chats.length,
+            ready,
+          });
         });
-        return true;
-      }
-      if (msg.type === "WABK_QUICK_MEDIA") {
-        WAUI.setOpen(true);
-        WAUI.quickExportMedia().then((n) => sendResponse({ ok: true, count: n }));
         return true;
       }
     });
 
-    console.info("[WA Chats Backup Pro] ready");
+    console.info("[WA Chats Backup Pro] ready (WPP bridge)");
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => setTimeout(boot, 800));
+    document.addEventListener("DOMContentLoaded", () => setTimeout(boot, 500));
   } else {
-    setTimeout(boot, 800);
+    setTimeout(boot, 500);
   }
 })();

@@ -1,28 +1,26 @@
 {
   "manifest_version": 3,
   "name": "WA Chats Backup Pro",
-  "version": "1.2.0",
-  "description": "Export WhatsApp Web chats as Markdown with images, videos and documents. One-click toolbar backup like Chats Backup for wa.",
+  "version": "1.3.0",
+  "description": "Export WhatsApp Web chats via WPPConnect Store as Markdown with images/videos.",
   "permissions": [
-    "activeTab",
-    "downloads",
-    "scripting",
     "storage",
-    "tabs"
+    "unlimitedStorage"
   ],
   "host_permissions": [
-    "https://web.whatsapp.com/*"
+    "https://web.whatsapp.com/*",
+    "https://*.whatsapp.com/*",
+    "https://*.whatsapp.net/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://web.whatsapp.com/*"],
+      "matches": ["https://web.whatsapp.com/*", "https://*.whatsapp.com/*"],
       "js": [
         "lib/zip.js",
-        "content/dom.js",
-        "content/parser.js",
+        "content/wpp.js",
         "content/exporter.js",
         "content/ui.js",
         "content/main.js"
@@ -30,6 +28,15 @@
       "css": ["content/styles.css"],
       "run_at": "document_idle",
       "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "libs/wppconnect-wa.js",
+        "injected.js"
+      ],
+      "matches": ["https://web.whatsapp.com/*", "https://*.whatsapp.com/*"]
     }
   ],
   "action": {
