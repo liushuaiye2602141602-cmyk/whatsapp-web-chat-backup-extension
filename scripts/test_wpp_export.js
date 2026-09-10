@@ -146,10 +146,49 @@ eval(src);
     fail++;
   } else console.log("OK mediaResultToBlob");
 
+  // dedupe
+  const dupList = WAExporter.dedupeMessages([
+    { id: "a", fromMe: true, time: 1, message: "x", type: "chat" },
+    { id: "a", fromMe: true, time: 1, message: "x", type: "chat" },
+    { id: "b", fromMe: false, time: 2, message: "y", type: "chat" },
+  ]);
+  if (dupList.length !== 2) {
+    console.error("FAIL dedupeMessages", dupList.length);
+    fail++;
+  } else console.log("OK dedupeMessages");
+
+  // html export
+  const html = await WAExporter.toHtml(
+    { title: "ByDuoc", chatId: "x" },
+    [
+      {
+        id: "a",
+        time: Date.parse("2026-07-25T22:27:24"),
+        fromMe: true,
+        displayName: "我",
+        message: "hello",
+        isMedia: false,
+        reactions: [],
+      },
+    ],
+    { mediaMode: "none" }
+  );
+  const htmlChecks = [
+    [html.includes("ByDuoc"), "html title"],
+    [html.includes('class="msg out"'), "html out bubble"],
+    [html.includes("hello"), "html text"],
+  ];
+  for (const [ok, n] of htmlChecks) {
+    if (!ok) {
+      console.error("FAIL", n);
+      fail++;
+    } else console.log("OK", n);
+  }
+
   // exportChats with mocked bridge
   const results = await WAExporter.exportChats(
     [{ id: "1", name: "ByDuoc" }],
-    { formats: ["md"], includeMedia: true },
+    { formats: ["html", "md"], includeMedia: true },
     () => {}
   );
   // downloadBlob will try to click anchor - in node may fail; catch

@@ -10,7 +10,8 @@
     selected: new Set(),
     busy: false,
     progress: "",
-    formats: { md: true, zip: true, txt: false, json: false },
+    // Default: ZIP only (contains chat.md + chat.html + media) to avoid duplicate downloads
+    formats: { html: false, md: false, zip: true, txt: false, json: false },
     includeMedia: true,
   };
 
@@ -104,11 +105,13 @@
           <section class="wabk-col wabk-options">
             <div class="wabk-section-title">导出格式</div>
             <div class="wabk-formats">
-              <label><input type="checkbox" name="fmt" value="md" checked> Markdown (.md) 推荐</label>
-              <label><input type="checkbox" name="fmt" value="zip" checked> ZIP（chat.md + 媒体）</label>
+              <label><input type="checkbox" name="fmt" value="zip" checked> ZIP（推荐：md + html + 媒体）</label>
+              <label><input type="checkbox" name="fmt" value="html"> 单独 HTML（可点击媒体）</label>
+              <label><input type="checkbox" name="fmt" value="md"> 单独 Markdown</label>
               <label><input type="checkbox" name="fmt" value="txt"> TXT</label>
               <label><input type="checkbox" name="fmt" value="json"> JSON</label>
             </div>
+            <p class="wabk-hint">默认只下 ZIP，避免和 ZIP 内文件重复。勾选「单独 HTML/MD」才会额外多下一个文件。</p>
             <div class="wabk-toggles">
               <label><input type="checkbox" id="wabk-media" checked> 包含图片与视频</label>
             </div>
@@ -188,7 +191,13 @@
       this.setProgress("读取聊天列表…");
       try {
         const list = await WABridge.getChatList();
-        STATE.chats = Array.isArray(list) ? list : [];
+        const seen = new Set();
+        STATE.chats = (Array.isArray(list) ? list : []).filter((c) => {
+          const key = c.id || c.name;
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
         this.renderChatList();
         this.setProgress("");
         this.log(`加载 ${STATE.chats.length} 个聊天`);

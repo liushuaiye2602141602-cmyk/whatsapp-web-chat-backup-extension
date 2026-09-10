@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "WA Chats Backup Pro",
-  "version": "1.3.0",
-  "description": "Export WhatsApp Web chats via WPPConnect Store as Markdown with images/videos.",
+  "version": "1.4.0",
+  "description": "Export WhatsApp Web chats via WPPConnect Store as Markdown, HTML and ZIP with media.",
   "permissions": [
     "storage",
     "unlimitedStorage"

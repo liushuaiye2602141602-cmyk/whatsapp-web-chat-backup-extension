@@ -127,10 +127,180 @@
     return lines.join("\n");
   }
 
+  /** Drop duplicate messages (same id / same text+time+fromMe). */
+  function dedupeMessages(list) {
+    const seen = new Set();
+    const out = [];
+    for (const m of list || []) {
+      const key =
+        m.id ||
+        `${m.fromMe}|${m.time}|${m.type}|${m.message || ""}|${m.caption || ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(m);
+    }
+    return out;
+  }
+
+  function escHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function blobToDataURL(blob) {
+    return new Promise((resolve) => {
+      if (!blob) return resolve("");
+      if (typeof FileReader === "undefined") {
+        // non-browser (tests)
+        Promise.resolve(blob.arrayBuffer())
+          .then((buf) => {
+            const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+            resolve(`data:${blob.type || "application/octet-stream"};base64,${b64}`);
+          })
+          .catch(() => resolve(""));
+        return;
+      }
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => resolve("");
+      r.readAsDataURL(blob);
+    });
+  }
+
+  /**
+   * WhatsApp-like HTML export.
+   * @param {object} opts { mediaMode: 'embed'|'relative'|'none', mediaMap: Map name→Blob }
+   */
+  async function toHtml(chat, messages, opts = {}) {
+    const mediaMode = opts.mediaMode || "none";
+    const mediaMap = opts.mediaMap || new Map();
+    const title = chat.title || chat.chatName || "WhatsApp Chat";
+    const cards = [];
+    let mediaIdx = 0;
+
+    for (const m of messages) {
+      const who = whoLabel(m);
+      const time = formatTime(m.time);
+      const body = (m.message || m.caption || "").trim();
+      const mediaHtml = [];
+
+      if (m.isMedia || m._rawHasMedia) {
+        mediaIdx += 1;
+        const name = m.exportFilename || mediaFilename(m, mediaIdx);
+        const blob = mediaMap.get(name) || null;
+        let src = "";
+        if (mediaMode === "embed" && blob) {
+          src = await blobToDataURL(blob);
+        } else if (mediaMode === "relative") {
+          src = "media/" + name;
+        }
+
+        if (mediaKindLabel(m) === "image" && src) {
+          mediaHtml.push(
+            `<div class="media"><a href="${escHtml(src)}" target="_blank" download="${escHtml(name)}"><img src="${escHtml(src)}" alt="${escHtml(name)}" loading="lazy"></a><div class="media-name">${escHtml(name)}</div></div>`
+          );
+        } else if (mediaKindLabel(m) === "video" && src) {
+          mediaHtml.push(
+            `<div class="media"><video controls playsinline src="${escHtml(src)}"></video><div class="media-name">${escHtml(name)}</div></div>`
+          );
+        } else if (mediaKindLabel(m) === "audio" && src) {
+          mediaHtml.push(
+            `<div class="media"><audio controls src="${escHtml(src)}"></audio><div class="media-name">${escHtml(name)}</div></div>`
+          );
+        } else if (src) {
+          mediaHtml.push(
+            `<div class="media file"><a href="${escHtml(src)}" download="${escHtml(name)}">📎 ${escHtml(name)}</a></div>`
+          );
+        } else {
+          mediaHtml.push(
+            `<div class="media file">📎 ${escHtml(name)}</div>`
+          );
+        }
+      }
+
+      const rx =
+        m.reactions && m.reactions.length
+          ? `<div class="rx">${escHtml(m.reactions.map((r) => r.text).join(" "))}</div>`
+          : "";
+
+      cards.push(`
+<article class="msg ${m.fromMe ? "out" : "in"}">
+  <header><span class="who">${escHtml(who)}</span><span class="time">${escHtml(time)}</span></header>
+  ${body ? `<div class="text">${escHtml(body).replace(/\n/g, "<br>")}</div>` : ""}
+  ${mediaHtml.join("\n")}
+  ${rx}
+</article>`);
+    }
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escHtml(title)} — WhatsApp Export</title>
+<style>
+  :root { --bg:#e5ddd5; --in:#fff; --out:#d9fdd3; --ink:#111b21; --muted:#667781; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--ink);
+  }
+  .top {
+    position: sticky; top: 0; z-index: 2;
+    background: #008069; color: #fff; padding: 14px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  }
+  .top h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .top p { margin: 4px 0 0; font-size: 12px; opacity: .9; }
+  .meta {
+    max-width: 900px; margin: 12px auto 0; padding: 0 16px;
+    font-size: 12px; color: #333;
+  }
+  .thread {
+    max-width: 900px; margin: 0 auto; padding: 16px 16px 48px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .msg {
+    max-width: min(72%, 640px); border-radius: 8px; padding: 8px 10px 6px;
+    box-shadow: 0 1px 0.5px rgba(11,20,26,.13);
+    align-self: flex-start; background: var(--in);
+  }
+  .msg.out { align-self: flex-end; background: var(--out); }
+  .msg header {
+    display: flex; justify-content: space-between; gap: 12px;
+    font-size: 11px; color: var(--muted); margin-bottom: 4px;
+  }
+  .text { font-size: 14.2px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .media { margin-top: 8px; }
+  .media img, .media video { max-width: 100%; border-radius: 6px; display: block; }
+  .media audio { width: 100%; }
+  .media-name { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-all; }
+  .media.file a { color: #027eb5; text-decoration: none; font-size: 13px; }
+  .rx { margin-top: 6px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>${escHtml(title)}</h1>
+    <p>${escHtml(chat.chatId || chat.id || "")} · ${messages.length} 条 · 导出 ${escHtml(formatNow())}</p>
+  </div>
+  <div class="thread">
+${cards.join("\n")}
+  </div>
+</body>
+</html>`;
+  }
+
   const WAExporter = {
     safeFilename,
     downloadBlob,
     formatTime,
+    dedupeMessages,
+    toHtml,
 
     toMarkdown(chat, messages, opts = {}) {
       const mediaMode = opts.mediaMode || "names";
@@ -210,12 +380,23 @@
     async toZip(chat, messages, mediaFiles, onProgress) {
       const zip = new WAZip.ZipWriter();
       const base = safeFilename(chat.title || chat.chatName);
-      if (onProgress) onProgress("构建 Markdown…", 0, 1);
+      if (onProgress) onProgress("构建文档…", 0, 1);
       const md = this.toMarkdown(chat, messages, {
         mediaMode: "relative",
         subtitle: "媒体文件见 `media/` 目录。",
       });
       await zip.add(`${base}/chat.md`, md);
+
+      const mediaMap = new Map();
+      for (const f of mediaFiles || []) {
+        if (f.blob) mediaMap.set(f.filename, f.blob);
+      }
+      if (onProgress) onProgress("构建 HTML…");
+      const html = await toHtml(chat, messages, {
+        mediaMode: mediaMap.size ? "relative" : "none",
+        mediaMap,
+      });
+      await zip.add(`${base}/chat.html`, html);
 
       const used = new Set();
       let i = 0;
@@ -372,7 +553,12 @@
           chatId: bundle.chatId || chat.id,
           id: bundle.chatId || chat.id,
         };
-        let messages = bundle.items;
+        const rawCount = bundle.items.length;
+        let messages = dedupeMessages(bundle.items);
+        const dupes = rawCount - messages.length;
+        if (dupes > 0 && onProgress) {
+          onProgress(`${label}: 去重 ${dupes} 条`);
+        }
         const base = safeFilename(chatMeta.title);
         const stamp = new Date().toISOString().slice(0, 10);
 
@@ -388,6 +574,26 @@
             isMedia: false,
             _rawHasMedia: false,
           }));
+        }
+
+        const mediaMap = new Map();
+        for (const f of mediaFiles) {
+          if (f.blob) mediaMap.set(f.filename, f.blob);
+        }
+
+        // Standalone HTML (clickable media when embed possible)
+        if (formats.includes("html")) {
+          const html = await toHtml(chatMeta, messages, {
+            mediaMode: mediaMap.size ? "embed" : "none",
+            mediaMap,
+          });
+          this.safeDownload(
+            new Blob([html], { type: "text/html;charset=utf-8" }),
+            `${base}_${stamp}.html`,
+            results,
+            chatMeta.title,
+            { messages: messages.length }
+          );
         }
 
         if (formats.includes("md")) {
