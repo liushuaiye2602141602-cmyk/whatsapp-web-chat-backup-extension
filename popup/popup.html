@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WA Chats Backup Pro</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>WA Chats Backup</h1>
+        <p class="sub">Chats · Images · Videos</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <p class="hint" id="status">检测 WhatsApp Web…</p>
+      <button id="btn-open" class="btn primary">打开面板</button>
+      <button id="btn-export-active" class="btn">导出当前聊天</button>
+      <button id="btn-media" class="btn">仅导出图片/视频 ZIP</button>
+      <button id="btn-open-wa" class="btn ghost">打开 WhatsApp Web</button>
+    </div>
+    <div class="card tips">
+      <h2>使用说明</h2>
+      <ol>
+        <li>登录 <b>web.whatsapp.com</b></li>
+        <li>点聊天标题栏的绿色时钟按钮打开面板</li>
+        <li>勾选聊天 → 选择格式（默认 <b>MD + ZIP</b>）→ 导出</li>
+        <li>主文件是 <b>.md</b>；ZIP 内含 <code>chat.md</code> 与 <code>media/</code> 图片视频</li>
+        <li>MD 中图片以相对路径引用，可用预览器直接打开</li>
+      </ol>
+    </div>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
