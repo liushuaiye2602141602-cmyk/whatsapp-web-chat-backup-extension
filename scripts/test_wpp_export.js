@@ -51,6 +51,11 @@ global.WABridge = {
     return null;
   },
   getProfilePicture: async () => "",
+  getContactInfo: async (id) => ({
+    id,
+    name: "ByDuoc",
+    phone: "85291234567",
+  }),
 };
 global.WAZip = {
   ZipWriter: class {
@@ -191,11 +196,24 @@ eval(src);
   }
 
   // export filename base includes WA number / chat id
-  const baseName = WAExporter.exportBaseName("ByDuoc", "227938561720516@lid");
-  if (baseName !== "ByDuoc - 227938561720516") {
-    console.error("FAIL exportBaseName", baseName);
+  const baseName = WAExporter.exportBaseName("ByDuoc", "227938561720516@lid", "85291234567");
+  if (baseName !== "ByDuoc - 85291234567") {
+    console.error("FAIL exportBaseName with phone", baseName);
     fail++;
-  } else console.log("OK exportBaseName", baseName);
+  } else console.log("OK exportBaseName with phone", baseName);
+
+  // @lid without phone should NOT use lid as number
+  const lidOnly = WAExporter.exportBaseName("ByDuoc", "227938561720516@lid");
+  if (lidOnly !== "ByDuoc") {
+    console.error("FAIL exportBaseName lid-only should omit id", lidOnly);
+    fail++;
+  } else console.log("OK exportBaseName lid-only", lidOnly);
+
+  const cUs = WAExporter.exportBaseName("Alice", "8613800138000@c.us");
+  if (cUs !== "Alice - 8613800138000") {
+    console.error("FAIL exportBaseName @c.us", cUs);
+    fail++;
+  } else console.log("OK exportBaseName @c.us", cUs);
 
   // exportChats with mocked bridge
   const results = await WAExporter.exportChats(
@@ -218,10 +236,10 @@ eval(src);
     console.log("OK exportChats message count");
     // filename should contain WhatsApp number if chatId present in mock
     const f = results.find((r) => r.file && r.file.endsWith(".md"));
-    if (f && f.file.includes("ByDuoc - 227938561720516")) {
-      console.log("OK filename has contact id", f.file);
+    if (f && f.file.includes("ByDuoc - 85291234567")) {
+      console.log("OK filename has WA phone", f.file);
     } else if (f) {
-      console.error("FAIL filename missing WA number", f.file);
+      console.error("FAIL filename missing WA phone", f.file);
       fail++;
     }
   }

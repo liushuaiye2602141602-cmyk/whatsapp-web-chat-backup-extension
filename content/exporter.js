@@ -16,17 +16,26 @@
 
   /**
    * Export basename: 「对方名称 - WhatsApp号码」
-   * chatId 形如 227938561720516@lid / 8613800138000@c.us → 取 @ 前号码或 id 本体
+   * @param {string} title
+   * @param {string} chatId  e.g. 86138…@c.us or 227…@lid
+   * @param {string} [phone] real phone from WPP contact (preferred over jid prefix)
    */
-  function exportBaseName(title, chatId) {
+  function exportBaseName(title, chatId, phone) {
     const name = safeFilename(title || "chat");
-    let id = String(chatId || "").trim();
-    if (id.includes("@")) id = id.split("@")[0];
-    // strip device / agent suffix after :
-    if (id.includes(":")) id = id.split(":")[0];
-    id = safeFilename(id).replace(/\s+/g, "");
-    if (!id) return name;
-    return `${name} - ${id}`;
+    let num = String(phone || "").replace(/[^\d+]/g, "");
+    if (!num) {
+      const id = String(chatId || "").trim();
+      // Only use jid prefix as number when it's a real user jid (@c.us / @s.whatsapp.net)
+      if (/@c\.us|@s\.whatsapp\.net/i.test(id)) {
+        num = id.split("@")[0].split(":")[0].replace(/\D/g, "");
+      } else if (id && !id.includes("@")) {
+        num = id.replace(/\D/g, "");
+      }
+      // @lid / @g.us: do not treat lid as phone
+    }
+    num = num.replace(/\D/g, "");
+    if (!num) return name;
+    return `${name} - ${num}`;
   }
 
   function downloadBlob(blob, filename) {
@@ -567,7 +576,7 @@ ${cards.join("\n")}
      */
     async toZip(chat, messages, mediaFiles, onProgress, opts = {}) {
       const zip = new WAZip.ZipWriter();
-      const base = exportBaseName(chat.title || chat.chatName, chat.chatId || chat.id);
+      const base = exportBaseName(chat.title || chat.chatName, chat.chatId || chat.id, chat.phone);
       if (onProgress) onProgress("构建文档…", 0, 1);
       const md = this.toMarkdown(chat, messages, {
         mediaMode: "relative",
@@ -741,14 +750,31 @@ ${cards.join("\n")}
           title: bundle.chatName || chat.name,
           chatId: bundle.chatId || chat.id,
           id: bundle.chatId || chat.id,
+          phone: chat.phone || "",
         };
+
+        // Real WhatsApp number for filename (jid @lid is not a phone)
+        if (!chatMeta.phone) {
+          try {
+            const info = await WABridge.getContactInfo(chatMeta.chatId || chatMeta.id);
+            if (info) {
+              chatMeta.phone = info.phone || "";
+              if (info.name && (!chatMeta.title || chatMeta.title === chatMeta.chatId)) {
+                chatMeta.title = info.name;
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
         const rawCount = bundle.items.length;
         let messages = dedupeMessages(bundle.items);
         const dupes = rawCount - messages.length;
         if (dupes > 0 && onProgress) {
           onProgress(`${label}: 去重 ${dupes} 条`);
         }
-        const base = exportBaseName(chatMeta.title, chatMeta.chatId || chatMeta.id || chat.id);
+        const base = exportBaseName(chatMeta.title, chatMeta.chatId || chatMeta.id || chat.id, chatMeta.phone);
         const stamp = new Date().toISOString().slice(0, 10);
 
         let mediaFiles = [];

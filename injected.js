@@ -142,18 +142,79 @@
     if (!WPP || !WPP.chat || !WPP.chat.list) return [];
     try {
       const list = await WPP.chat.list();
-      return (list || []).map((c) => ({
-        id: String(c.id || c.chatId || ""),
-        name:
-          (c.contact && (c.contact.formattedName || c.contact.name || c.contact.pushname)) ||
-          c.formattedTitle ||
-          c.name ||
-          String(c.id || ""),
-      }));
+      return (list || []).map((c) => {
+        const contact = c.contact || {};
+        const idStr = String(c.id || c.chatId || "");
+        const phone =
+          contact.formattedPhone ||
+          contact.phoneNumber ||
+          contact.number ||
+          phoneOf(contact.id) ||
+          (idStr.includes("@c.us") ? phoneOf(idStr) : "");
+        return {
+          id: idStr,
+          name:
+            contact.formattedName ||
+            contact.name ||
+            contact.pushname ||
+            c.formattedTitle ||
+            c.name ||
+            idStr,
+          phone: phone ? String(phone).replace(/[^\d+]/g, "") : "",
+        };
+      });
     } catch (e) {
       console.warn("[WABK] chat.list failed", e);
       return [];
     }
+  }
+
+  /** Resolve display name + real phone for one chat (for filenames). */
+  async function getContactInfo(chatId) {
+    const WPP = getWPP();
+    const idStr = String(chatId || "");
+    let name = "";
+    let phone = "";
+    try {
+      if (WPP && WPP.contact && WPP.contact.queryExists) {
+        // may fail for @lid
+      }
+      if (WPP && WPP.contact && typeof WPP.contact.get === "function") {
+        const contact = await WPP.contact.get(idStr);
+        if (contact) {
+          name = contact.formattedName || contact.name || contact.pushname || "";
+          phone =
+            contact.formattedPhone ||
+            contact.phoneNumber ||
+            contact.number ||
+            phoneOf(contact.id || idStr) ||
+            "";
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    // fallback from chat model
+    try {
+      if (WPP && WPP.chat && typeof WPP.chat.get === "function") {
+        const chat = await WPP.chat.get(idStr);
+        if (chat) {
+          const contact = chat.contact || {};
+          name = name || contact.formattedName || chat.formattedTitle || "";
+          phone =
+            phone ||
+            contact.formattedPhone ||
+            contact.phoneNumber ||
+            phoneOf(contact.id) ||
+            "";
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!phone && idStr.includes("@c.us")) phone = phoneOf(idStr);
+    phone = String(phone || "").replace(/[^\d+]/g, "");
+    return { id: idStr, name: name || "", phone };
   }
 
   async function getActiveChat() {
@@ -162,13 +223,19 @@
       if (WPP && WPP.chat && WPP.chat.getActiveChat) {
         const c = WPP.chat.getActiveChat();
         if (!c) return null;
+        const contact = c.contact || {};
         return {
           id: String(c.id || ""),
           name:
-            (c.contact && c.contact.formattedName) ||
+            contact.formattedName ||
             c.formattedTitle ||
             c.name ||
             String(c.id || ""),
+          phone:
+            contact.formattedPhone ||
+            contact.phoneNumber ||
+            phoneOf(contact.id) ||
+            (String(c.id).includes("@c.us") ? phoneOf(String(c.id)) : ""),
         };
       }
     } catch {
@@ -201,6 +268,7 @@
     },
     getChatList,
     getActiveChat,
+    getContactInfo: (params) => getContactInfo(params && params.chatId),
     getMessages,
     downloadMedia: (params) => downloadMedia(params && params.id),
     getProfilePicture: (params) => getProfilePicture(params && params.chatId),

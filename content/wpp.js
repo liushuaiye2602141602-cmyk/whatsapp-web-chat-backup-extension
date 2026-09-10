@@ -110,6 +110,10 @@
       return this.call("getChatList", {}, timeoutMs);
     },
 
+    getContactInfo(chatId, timeoutMs = 10000) {
+      return this.call("getContactInfo", { chatId }, timeoutMs);
+    },
+
     getActiveChat(timeoutMs = 8000) {
       return this.call("getActiveChat", {}, timeoutMs);
     },
