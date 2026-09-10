@@ -1,23 +1,23 @@
----
+﻿---
 feature: wpp-store-export
 status: delivered
 updated: 2026-09-10
 branch: feat/wpp-store-export
-commits: fa37f1e..HEAD
+commits: fa37f1e..940a036
 ---
 
 # WPP Store Export
 
 ## Report
 
-**What was built** — WhatsApp Web backup extension that injects WPPConnect (`libs/wppconnect-wa.js`) into the page world and reads chats via Store APIs (`chat.list` / `getMessages` / `downloadMedia`). Content script talks to the page through a correlated CustomEvent bridge (`WABK_wpp` + `requestId` → `WABK_wpp_result`). Default export is a single ZIP containing `chat.md`, WhatsApp-style `chat.html`, and media blobs. Optional standalone HTML (embedded media), MD, TXT, JSON. Messages and chat list are deduplicated by id. Green toolbar button opens multi-select panel with diagnose.
+**What was built** 鈥?WhatsApp Web backup extension that injects WPPConnect (`libs/wppconnect-wa.js`) into the page world and reads chats via Store APIs (`chat.list` / `getMessages` / `downloadMedia`). Content script talks to the page through a correlated CustomEvent bridge (`WABK_wpp` + `requestId` 鈫?`WABK_wpp_result`). Default export is a single ZIP containing `chat.md`, WhatsApp-style `chat.html`, and media blobs. Optional standalone HTML (embedded media), MD, TXT, JSON. Messages and chat list are deduplicated by id. Green toolbar button opens multi-select panel with diagnose.
 
-**Verification** — `node --check` on injected.js, content/wpp.js, content/exporter.js, content/ui.js, content/main.js: PASS. `node scripts/test_wpp_export.js`: PASS (MD, HTML bubbles, dedupe, mediaResultToBlob, exportChats). Package `WA-Chats-Backup-Pro-1.4.0.zip`.
+**Verification** 鈥?`node --check` on injected.js, content/wpp.js, content/exporter.js, content/ui.js, content/main.js: PASS. `node scripts/test_wpp_export.js`: PASS (MD, HTML bubbles, dedupe, mediaResultToBlob, exportChats). Package `WA-Chats-Backup-Pro-1.4.0.zip`.
 
 **Journey log**
-1. DOM selectors returned 0 messages — switched to WPPConnect Store injection (same as reference CRX).
-2. Review criticals: per-chat fetch, no reaction N+1, requestId correlation — fixed in 1.3.0.
-3. User: duplicate-looking files (standalone .md + ZIP with same chat.md) and no HTML — 1.4.0 defaults to ZIP-only; ZIP includes md+html; standalone HTML optional; message/list dedupe.
+1. DOM selectors returned 0 messages 鈥?switched to WPPConnect Store injection (same as reference CRX).
+2. Review criticals: per-chat fetch, no reaction N+1, requestId correlation 鈥?fixed in 1.3.0.
+3. User: duplicate-looking files (standalone .md + ZIP with same chat.md) and no HTML 鈥?1.4.0 defaults to ZIP-only; ZIP includes md+html; standalone HTML optional; message/list dedupe.
 
 ## [S1] Problem
 DOM scraping of WhatsApp Web returned 0 messages: virtualized list, hashed class names, and `message-in/out` selectors no longer match. Reference extension *Chats Backup for wa* injects WPPConnect and calls internal Store APIs.
@@ -27,8 +27,8 @@ DOM scraping of WhatsApp Web returned 0 messages: virtualized list, hashed class
 ### Architecture
 ```
 content script (isolated world)
-  inject libs/wppconnect-wa.js  → window.WPP
-  inject injected.js            → CustomEvent bridge
+  inject libs/wppconnect-wa.js  鈫?window.WPP
+  inject injected.js            鈫?CustomEvent bridge
 page world
   WPP.chat.list / getMessages / downloadMedia / getActiveChat
 ```
@@ -39,10 +39,10 @@ Response: `CustomEvent('WABK_wpp_result', {detail:{requestId, eventName, ok, dat
 
 | eventName | params | notes |
 |---|---|---|
-| isMainReady | — | boolean |
-| keepAlive | — | true |
-| getChatList | — | `[{id, name}]` |
-| getActiveChat | — | `{id, name}` \| null |
+| isMainReady | 鈥?| boolean |
+| keepAlive | 鈥?| true |
+| getChatList | 鈥?| `[{id, name}]` |
+| getActiveChat | 鈥?| `{id, name}` \| null |
 | getMessages | `{chats:[one chat], count}` | one chat per call; timeout 120s |
 | downloadMedia | `{id}` | Blob or null |
 
@@ -51,7 +51,7 @@ Response: `CustomEvent('WABK_wpp_result', {detail:{requestId, eventName, ok, dat
 - Optional standalone: `html` (embed data URLs), `md`, `txt`, `json`
 - `dedupeMessages` by id; chat list deduped by id
 - Same `exportFilename` in MD/HTML and ZIP media entries
-- WPP not ready → error, no empty download
+- WPP not ready 鈫?error, no empty download
 
 ## [S3] Out of Scope
 - Pro/paywall, OAuth, server upload
@@ -65,3 +65,4 @@ Response: `CustomEvent('WABK_wpp_result', {detail:{requestId, eventName, ok, dat
 - [x] T5: Syntax check + package zip (covers: S2)
 - [x] T6: Review criticals (per-chat fetch, no reaction N+1, requestId) (covers: S2)
 - [x] T7: Dedupe + HTML export + ZIP-only default (covers: S2)
+
