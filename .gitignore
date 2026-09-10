@@ -1,0 +1,17 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs / temp
+*.log
+tmp/
+_share_build/
+_share_pack/
+
+# Do not commit large unpacked reference CRX trees
+reference-chats-backup*/
+WA-Chats-Backup-Pro-*.zip
