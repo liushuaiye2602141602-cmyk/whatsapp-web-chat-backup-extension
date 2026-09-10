@@ -50,6 +50,7 @@ global.WABridge = {
     }
     return null;
   },
+  getProfilePicture: async () => "",
 };
 global.WAZip = {
   ZipWriter: class {
@@ -174,9 +175,10 @@ eval(src);
     { mediaMode: "none" }
   );
   const htmlChecks = [
-    [html.includes("ByDuoc"), "html title"],
+    [html.includes("ByDuoc · WhatsApp"), "html title name+WhatsApp"],
     [html.includes('class="msg out"'), "html out bubble"],
     [html.includes("hello"), "html text"],
+    [html.includes("avatar-fallback") || html.includes('class="avatar"'), "html avatar slot"],
   ];
   for (const [ok, n] of htmlChecks) {
     if (!ok) {

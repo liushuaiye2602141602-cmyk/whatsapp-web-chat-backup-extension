@@ -65,9 +65,10 @@
   }
 
   function buildMarkdownHeader(chat, messages, mediaCount) {
-    const title = chat.title || chat.chatName || "WhatsApp Chat";
+    const name = chat.title || chat.chatName || "WhatsApp Chat";
+    const title = `${name} · WhatsApp`;
     const rows = [
-      ["聊天", title],
+      ["聊天", name],
       ["Chat ID", chat.chatId || chat.id || ""],
       ["导出时间", formatNow()],
       ["消息数", String(messages.length)],
@@ -170,14 +171,32 @@
     });
   }
 
+  /** Fetch avatar URL → data URL for embedding in HTML. */
+  async function fetchAvatarDataURL(chatId) {
+    try {
+      const url = await WABridge.getProfilePicture(chatId);
+      if (!url || typeof url !== "string") return "";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) return "";
+      const blob = await res.blob();
+      if (!blob || !blob.size) return "";
+      return await blobToDataURL(blob);
+    } catch {
+      return "";
+    }
+  }
+
   /**
    * WhatsApp-like HTML export.
-   * @param {object} opts { mediaMode: 'embed'|'relative'|'none', mediaMap: Map name→Blob }
+   * @param {object} opts { mediaMode, mediaMap, avatarDataURL }
+   * Header: 「对方名称 · WhatsApp」+ 头像
    */
   async function toHtml(chat, messages, opts = {}) {
     const mediaMode = opts.mediaMode || "none";
     const mediaMap = opts.mediaMap || new Map();
-    const title = chat.title || chat.chatName || "WhatsApp Chat";
+    const contactName = chat.title || chat.chatName || "WhatsApp Chat";
+    const headerTitle = `${contactName} · WhatsApp`;
+    const avatar = opts.avatarDataURL || "";
     const cards = [];
     let mediaIdx = 0;
 
@@ -240,7 +259,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escHtml(title)} — WhatsApp Export</title>
+<title>${escHtml(headerTitle)}</title>
 <style>
   :root { --bg:#e5ddd5; --in:#fff; --out:#d9fdd3; --ink:#111b21; --muted:#667781; }
   * { box-sizing: border-box; }
@@ -251,15 +270,26 @@
   }
   .top {
     position: sticky; top: 0; z-index: 2;
-    background: #008069; color: #fff; padding: 14px 20px;
+    background: #008069; color: #fff; padding: 12px 20px;
     box-shadow: 0 1px 4px rgba(0,0,0,.2);
+    display: flex; align-items: center; gap: 12px;
   }
-  .top h1 { margin: 0; font-size: 18px; font-weight: 600; }
-  .top p { margin: 4px 0 0; font-size: 12px; opacity: .9; }
-  .meta {
-    max-width: 900px; margin: 12px auto 0; padding: 0 16px;
-    font-size: 12px; color: #333;
+  .top .avatar {
+    width: 48px; height: 48px; min-width: 48px;
+    border-radius: 50%; object-fit: cover;
+    background: rgba(255,255,255,.2);
+    box-shadow: 0 0 0 2px rgba(255,255,255,.35);
   }
+  .top .avatar-fallback {
+    width: 48px; height: 48px; min-width: 48px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700; color: #fff;
+  }
+  .top .info { min-width: 0; }
+  .top h1 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.3; }
+  .top p { margin: 2px 0 0; font-size: 12px; opacity: .92; }
   .thread {
     max-width: 900px; margin: 0 auto; padding: 16px 16px 48px;
     display: flex; flex-direction: column; gap: 10px;
@@ -285,8 +315,15 @@
 </head>
 <body>
   <div class="top">
-    <h1>${escHtml(title)}</h1>
-    <p>${escHtml(chat.chatId || chat.id || "")} · ${messages.length} 条 · 导出 ${escHtml(formatNow())}</p>
+    ${
+      avatar
+        ? `<img class="avatar" src="${escHtml(avatar)}" alt="${escHtml(contactName)}">`
+        : `<div class="avatar-fallback" aria-hidden="true">${escHtml((contactName || "?").trim().charAt(0).toUpperCase())}</div>`
+    }
+    <div class="info">
+      <h1>${escHtml(headerTitle)}</h1>
+      <p>${escHtml(chat.chatId || chat.id || "")} · ${messages.length} 条 · 导出 ${escHtml(formatNow())}</p>
+    </div>
   </div>
   <div class="thread">
 ${cards.join("\n")}
@@ -377,7 +414,7 @@ ${cards.join("\n")}
     /**
      * @param {Array} mediaFiles [{filename, blob}]
      */
-    async toZip(chat, messages, mediaFiles, onProgress) {
+    async toZip(chat, messages, mediaFiles, onProgress, opts = {}) {
       const zip = new WAZip.ZipWriter();
       const base = safeFilename(chat.title || chat.chatName);
       if (onProgress) onProgress("构建文档…", 0, 1);
@@ -395,6 +432,7 @@ ${cards.join("\n")}
       const html = await toHtml(chat, messages, {
         mediaMode: mediaMap.size ? "relative" : "none",
         mediaMap,
+        avatarDataURL: opts.avatarDataURL || "",
       });
       await zip.add(`${base}/chat.html`, html);
 
@@ -581,11 +619,16 @@ ${cards.join("\n")}
           if (f.blob) mediaMap.set(f.filename, f.blob);
         }
 
+        // Header avatar for HTML (name · WhatsApp)
+        if (onProgress) onProgress(`${label}: 获取头像…`);
+        const avatarDataURL = await fetchAvatarDataURL(chatMeta.chatId || chatMeta.id || chat.id);
+
         // Standalone HTML (clickable media when embed possible)
         if (formats.includes("html")) {
           const html = await toHtml(chatMeta, messages, {
             mediaMode: mediaMap.size ? "embed" : "none",
             mediaMap,
+            avatarDataURL,
           });
           this.safeDownload(
             new Blob([html], { type: "text/html;charset=utf-8" }),
@@ -631,7 +674,7 @@ ${cards.join("\n")}
           try {
             const zipBlob = await this.toZip(chatMeta, messages, mediaFiles, (msg) => {
               if (onProgress) onProgress(`${label}: ${msg}`);
-            });
+            }, { avatarDataURL });
             this.safeDownload(
               zipBlob,
               `${base}_${stamp}_backup.zip`,
