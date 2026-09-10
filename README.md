@@ -23,22 +23,21 @@
 
 ## Install (Developer Mode)
 
-1. Download or clone this repository
-2. Open `chrome://extensions`
-3. Enable **Developer mode**
-4. **Load unpacked** → select the project folder (contains `manifest.json`)
-5. Log in to [WhatsApp Web](https://web.whatsapp.com)
-6. **Refresh the page (F5)**
-7. Open a chat → click the **green clock** in the header, or the floating button
+> ⚠️ **Do NOT drag the `.zip` into Chrome.**  
+> Chrome **cannot** load a ZIP as an extension. **Unzip first**, then **Load unpacked** on the folder that contains `manifest.json`.
 
-### Quick ZIP
+1. **Unzip** the file (right-click → Extract All)
+2. Open the extracted folder — you must see **`manifest.json`** in this folder  
+   - Wrong: the ZIP itself, or the parent `Downloads` folder  
+   - Correct: `WA-Chats-Backup-Pro-v1.4.9` (folder *inside* after unzip)
+3. Open `chrome://extensions`
+4. Enable **Developer mode**
+5. Click **Load unpacked** → choose that folder (**do not drag the ZIP**)
+6. Log in to [WhatsApp Web](https://web.whatsapp.com)
+7. **Refresh the page (F5)**
+8. Open a chat → click the **green clock** in the header, or the floating button
 
-Grab the share pack from **Releases**, or build:
-
-```bash
-# From repo root (exclude .git)
-```
-
+If Chrome says *“Could not load manifest”*: you picked the wrong directory. The selected folder must contain `manifest.json` as a direct child.
 ## How to export
 
 1. Open the side panel from the green button
