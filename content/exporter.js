@@ -62,16 +62,23 @@
     return formatTime(Date.now());
   }
 
+  function looksLikeLid(value) {
+    const s = String(value || "");
+    return /^\d{10,}$/.test(s);
+  }
+
   function whoLabel(m, chat) {
     if (m.fromMe) return "我";
     let name = m.displayName || m.formattedName || "";
-    // Strip LID-looking labels (long digits from @lid)
-    if (name && /^\d{10,}$/.test(name) && !(chat && chat.phone === name)) {
-      name = "";
-    }
+    // Drop LID / raw long digits that are not a known phone
+    if (looksLikeLid(name) && !(chat && chat.phone === name)) name = "";
     if (name && name !== "联系人") return name;
-    if (m.phone) return m.phone;
-    if (chat && chat.phone) return chat.phone;
+
+    let phone = m.phone || "";
+    if (looksLikeLid(phone) && !(chat && chat.phone === phone)) phone = "";
+    if (phone) return phone;
+
+    if (chat && chat.phone && !looksLikeLid(chat.phone)) return chat.phone;
     if (chat && chat.title && chat.title !== chat.chatId) return chat.title;
     return "联系人";
   }
@@ -796,13 +803,16 @@ ${cards.join("\n")}
         const peerPhone = chatMeta.phone || chat.phone || bundle.phone || "";
         messages = messages.map((m) => {
           if (m.fromMe) return m;
-          const looksLikeLid = !m.displayName || /^\d{10,}$/.test(String(m.displayName));
-          if (!looksLikeLid) return m;
+          const lidName = looksLikeLid(m.displayName) || looksLikeLid(m.formattedName);
+          const lidPhone = looksLikeLid(m.phone);
+          if (!lidName && !lidPhone && m.displayName) return m;
+          const label = peerName && !looksLikeLid(peerName) ? peerName : peerPhone;
+          if (!label) return m;
           return {
             ...m,
-            displayName: peerName || peerPhone || m.displayName,
-            formattedName: peerName || peerPhone || m.formattedName,
-            phone: peerPhone || m.phone,
+            displayName: label,
+            formattedName: label,
+            phone: looksLikeLid(m.phone) ? peerPhone || "" : m.phone || peerPhone || "",
           };
         });
         const dupes = rawCount - bundle.items.length;

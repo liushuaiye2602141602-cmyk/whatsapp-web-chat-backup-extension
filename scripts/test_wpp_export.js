@@ -232,6 +232,32 @@ eval(src);
     fail++;
   }
 
+  // phone field holding LID must not leak into sender label
+  const mdLidPhone = WAExporter.toMarkdown(
+    { title: "ByDuoc", chatId: "227938561720516@lid", phone: "84965265135" },
+    [
+      {
+        id: "y",
+        time: Date.parse("2026-07-25T22:27:24"),
+        fromMe: false,
+        displayName: "",
+        formattedName: "",
+        phone: "227938561720516",
+        message: "Hello",
+        isMedia: false,
+        reactions: [],
+      },
+    ],
+    { mediaMode: "names" }
+  );
+  // sender bold line must not be the LID (Chat ID metadata row may still mention it)
+  if (/\*\*227938561720516/.test(mdLidPhone)) {
+    console.error("FAIL md leaked LID as sender label");
+    fail++;
+  } else {
+    console.log("OK md no LID as sender");
+  }
+
   // export filename base includes WA number / chat id
   const baseName = WAExporter.exportBaseName("ByDuoc", "227938561720516@lid", "85291234567");
   if (baseName !== "ByDuoc - 85291234567") {
