@@ -14,6 +14,21 @@
     );
   }
 
+  /**
+   * Export basename: 「对方名称 - WhatsApp号码」
+   * chatId 形如 227938561720516@lid / 8613800138000@c.us → 取 @ 前号码或 id 本体
+   */
+  function exportBaseName(title, chatId) {
+    const name = safeFilename(title || "chat");
+    let id = String(chatId || "").trim();
+    if (id.includes("@")) id = id.split("@")[0];
+    // strip device / agent suffix after :
+    if (id.includes(":")) id = id.split(":")[0];
+    id = safeFilename(id).replace(/\s+/g, "");
+    if (!id) return name;
+    return `${name} - ${id}`;
+  }
+
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -472,6 +487,7 @@ ${cards.join("\n")}
     downloadBlob,
     formatTime,
     dedupeMessages,
+    exportBaseName,
     toHtml,
 
     toMarkdown(chat, messages, opts = {}) {
@@ -551,7 +567,7 @@ ${cards.join("\n")}
      */
     async toZip(chat, messages, mediaFiles, onProgress, opts = {}) {
       const zip = new WAZip.ZipWriter();
-      const base = `${safeFilename(chat.title || chat.chatName)} - WhatsApp`;
+      const base = exportBaseName(chat.title || chat.chatName, chat.chatId || chat.id);
       if (onProgress) onProgress("构建文档…", 0, 1);
       const md = this.toMarkdown(chat, messages, {
         mediaMode: "relative",
@@ -732,7 +748,7 @@ ${cards.join("\n")}
         if (dupes > 0 && onProgress) {
           onProgress(`${label}: 去重 ${dupes} 条`);
         }
-        const base = `${safeFilename(chatMeta.title)} - WhatsApp`;
+        const base = exportBaseName(chatMeta.title, chatMeta.chatId || chatMeta.id || chat.id);
         const stamp = new Date().toISOString().slice(0, 10);
 
         let mediaFiles = [];

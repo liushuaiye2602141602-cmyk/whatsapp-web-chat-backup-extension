@@ -10,8 +10,8 @@ global.WABridge = {
   waitReady: async () => true,
   getMessagesForChat: async (chat) => [
     {
-      chatId: chat.id,
-      chatName: chat.name,
+      chatId: chat.id || "227938561720516@lid",
+      chatName: chat.name || "ByDuoc",
       items: [
         {
           id: "msg1",
@@ -190,9 +190,16 @@ eval(src);
     } else console.log("OK", n);
   }
 
+  // export filename base includes WA number / chat id
+  const baseName = WAExporter.exportBaseName("ByDuoc", "227938561720516@lid");
+  if (baseName !== "ByDuoc - 227938561720516") {
+    console.error("FAIL exportBaseName", baseName);
+    fail++;
+  } else console.log("OK exportBaseName", baseName);
+
   // exportChats with mocked bridge
   const results = await WAExporter.exportChats(
-    [{ id: "1", name: "ByDuoc" }],
+    [{ id: "227938561720516@lid", name: "ByDuoc" }],
     { formats: ["html", "md"], includeMedia: true },
     () => {}
   );
@@ -209,6 +216,14 @@ eval(src);
     }
   } else {
     console.log("OK exportChats message count");
+    // filename should contain WhatsApp number if chatId present in mock
+    const f = results.find((r) => r.file && r.file.endsWith(".md"));
+    if (f && f.file.includes("ByDuoc - 227938561720516")) {
+      console.log("OK filename has contact id", f.file);
+    } else if (f) {
+      console.error("FAIL filename missing WA number", f.file);
+      fail++;
+    }
   }
 
   if (fail) process.exit(1);
