@@ -256,10 +256,10 @@
         const active = await WABridge.getActiveChat();
         this.log("当前聊天: " + (active ? active.name + " / " + active.id : "无"));
         if (list && list.length) {
-          const sample = [list[0]];
-          const msgs = await WABridge.getMessages(sample, 5);
+          const sample = list[0];
+          const msgs = await WABridge.getMessagesForChat({ id: sample.id, name: sample.name }, 5, 30000);
           const n = msgs && msgs[0] && msgs[0].items ? msgs[0].items.length : 0;
-          this.log(`样例聊天「${sample[0].name}」取 5 条 → 实际 ${n} 条`);
+          this.log(`样例聊天「${sample.name}」取 5 条 → 实际 ${n} 条`);
           if (n) {
             const m = msgs[0].items[msgs[0].items.length - 1];
             this.log(`  最后: [${m.fromMe ? "我" : m.displayName}] ${(m.message || m.caption || m.type || "").slice(0, 60)}`);

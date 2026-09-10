@@ -1,17 +1,19 @@
 /**
  * Content-script side of the WPP CustomEvent bridge.
+ * Request: WABK_wpp {eventName, params, requestId}
+ * Response: WABK_wpp_result {requestId, eventName, ok, data, error}
  */
 (function (global) {
   "use strict";
 
   let injectTried = false;
+  let reqSeq = 0;
 
   const WABridge = {
     isInjected() {
       return injectTried;
     },
 
-    /** Inject wppconnect + bridge into page world (once). */
     inject() {
       if (injectTried) return;
       injectTried = true;
@@ -33,37 +35,50 @@
           (document.head || document.documentElement).appendChild(s);
         });
 
-      // sequential: WPP library first, then bridge
       (async () => {
         const a = await load("libs/wppconnect-wa.js", "wabk-wpp-lib");
+        if (!a) {
+          console.warn("[WABK] failed to load wppconnect-wa.js");
+          injectTried = false; // allow retry
+          return;
+        }
         const b = await load("injected.js", "wabk-wpp-bridge");
-        console.info("[WABK] inject", { wpp: a, bridge: b });
+        if (!b) {
+          console.warn("[WABK] failed to load injected.js");
+          injectTried = false;
+          return;
+        }
+        console.info("[WABK] inject ok");
       })();
     },
 
     /**
-     * Call injected bridge.
-     * @param {string} eventName
-     * @param {object} params
-     * @param {number} timeoutMs
+     * Call injected bridge with request correlation.
      */
-    call(eventName, params = {}, timeoutMs = 20000) {
+    call(eventName, params = {}, timeoutMs = 30000) {
+      this.inject();
       return new Promise((resolve, reject) => {
-        const resultEvent = "WABK_wpp_" + eventName + "_result";
+        const requestId = "wabk_" + Date.now().toString(36) + "_" + ++reqSeq;
         const timer = setTimeout(() => {
-          window.removeEventListener(resultEvent, onResult);
-          reject(new Error("WPP bridge timeout: " + eventName));
+          window.removeEventListener("WABK_wpp_result", onResult);
+          reject(new Error("WPP bridge timeout: " + eventName + " (" + timeoutMs + "ms)"));
         }, timeoutMs);
 
         function onResult(e) {
+          const d = e.detail || {};
+          if (d.requestId !== requestId) return;
           clearTimeout(timer);
-          window.removeEventListener(resultEvent, onResult);
-          resolve(e.detail);
+          window.removeEventListener("WABK_wpp_result", onResult);
+          if (!d.ok) {
+            reject(new Error(d.error || eventName + " failed"));
+            return;
+          }
+          resolve(d.data);
         }
 
-        window.addEventListener(resultEvent, onResult);
+        window.addEventListener("WABK_wpp_result", onResult);
         window.dispatchEvent(
-          new CustomEvent("WABK_wpp", { detail: { eventName, params } })
+          new CustomEvent("WABK_wpp", { detail: { eventName, params, requestId } })
         );
       });
     },
@@ -79,7 +94,6 @@
     async waitReady(maxWaitMs = 25000) {
       this.inject();
       const start = Date.now();
-      // poll
       while (Date.now() - start < maxWaitMs) {
         try {
           await this.call("keepAlive", {}, 2000);
@@ -92,24 +106,25 @@
       return false;
     },
 
-    getChatList() {
-      return this.call("getChatList");
+    getChatList(timeoutMs = 15000) {
+      return this.call("getChatList", {}, timeoutMs);
     },
 
-    getActiveChat() {
-      return this.call("getActiveChat");
+    getActiveChat(timeoutMs = 8000) {
+      return this.call("getActiveChat", {}, timeoutMs);
     },
 
-    getMessages(chats, count = -1) {
-      return this.call("getMessages", { chats, count });
+    /** Fetch messages for ONE chat (long timeout for full history). */
+    getMessagesForChat(chat, count = -1, timeoutMs = 120000) {
+      return this.call("getMessages", { chats: [chat], count }, timeoutMs);
     },
 
-    downloadMedia(id) {
-      return this.call("downloadMedia", { id });
+    downloadMedia(id, timeoutMs = 60000) {
+      return this.call("downloadMedia", { id }, timeoutMs);
     },
 
-    getProfilePicture(chatId) {
-      return this.call("getProfilePicture", { chatId });
+    getProfilePicture(chatId, timeoutMs = 10000) {
+      return this.call("getProfilePicture", { chatId }, timeoutMs);
     },
   };
 

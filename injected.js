@@ -51,8 +51,20 @@
     return [];
   }
 
+  function messageId(msg) {
+    const id = msg && msg.id;
+    if (!id) return "";
+    if (typeof id === "string") return id;
+    if (id._serialized) return String(id._serialized);
+    if (typeof id.toString === "function") {
+      const s = id.toString();
+      if (s && s !== "[object Object]") return s;
+    }
+    return "";
+  }
+
   function normalizeMessage(msg) {
-    const id = msg && msg.id ? String(msg.id) : "";
+    const id = messageId(msg);
     const type = (msg && msg.type) || "chat";
     const fromMe = !!(msg && msg.id && msg.id.fromMe);
     const author = msg && (msg.author || msg.from || msg.to || "");
@@ -65,6 +77,9 @@
     const timeMs = (msg && (msg.t || msg.timestamp || msg.timestampUnix)) || 0;
     const time = typeof timeMs === "number" && timeMs < 1e12 ? timeMs * 1000 : timeMs;
 
+    // Only use reactions already on the model — never fan out getReactions per message.
+    const inline = mapReactions(msg && msg.reactions);
+
     return {
       id,
       time,
@@ -73,7 +88,7 @@
       displayName: fromMe ? "我" : phoneOf(author) || "",
       formattedName: fromMe ? "我" : phoneOf(author) || "",
       phone: phoneOf(author),
-      reactions: mapReactions(msg && msg.reactions),
+      reactions: inline,
       isMedia,
       isImage,
       isAudio,
@@ -92,6 +107,7 @@
     if (!WPP || !WPP.chat || !WPP.chat.getMessages) return null;
     const chats = (params && params.chats) || [];
     if (!Array.isArray(chats) || !chats.length) return null;
+    // -1 = full history; large chats can be slow — caller should call per chat.
     const count = params && typeof params.count === "number" ? params.count : -1;
     const out = [];
 
@@ -103,16 +119,7 @@
         console.warn("[WABK] getMessages failed", chat.id, e);
       }
       if (!Array.isArray(raw)) raw = [];
-
-      const items = [];
-      for (const msg of raw) {
-        const item = normalizeMessage(msg);
-        // try enrich reactions from API
-        if (item.id && (!item.reactions || !item.reactions.length)) {
-          item.reactions = await getReactionsSafe(item.id);
-        }
-        items.push(item);
-      }
+      const items = raw.map(normalizeMessage).filter((m) => m.id || m.message || m.caption);
       out.push({ chatId: chat.id, chatName: chat.name || "", items });
     }
     return out;
@@ -203,16 +210,35 @@
     const detail = event.detail || {};
     const eventName = detail.eventName || "";
     const params = detail.params || {};
+    const requestId = detail.requestId || "";
     const fn = handlers[eventName];
-    let result = null;
+    let payload = null;
+    let error = null;
     try {
-      result = fn ? await fn(params) : { error: "unknown event " + eventName };
+      payload = fn ? await fn(params) : { error: "unknown event " + eventName };
+      if (payload && payload.error) error = payload.error;
     } catch (e) {
-      result = { error: String((e && e.message) || e) };
+      error = String((e && e.message) || e);
+      payload = { error };
     }
-    window.dispatchEvent(
-      new CustomEvent("WABK_wpp_" + eventName + "_result", { detail: result })
-    );
+    // Single correlated result channel — avoids same-event cross-talk.
+    const out = { requestId, eventName, ok: !error, data: error ? null : payload, error };
+    try {
+      window.dispatchEvent(new CustomEvent("WABK_wpp_result", { detail: out }));
+    } catch (cloneErr) {
+      // e.g. DataCloneError on unexpected payloads
+      window.dispatchEvent(
+        new CustomEvent("WABK_wpp_result", {
+          detail: {
+            requestId,
+            eventName,
+            ok: false,
+            data: null,
+            error: "result not cloneable: " + cloneErr,
+          },
+        })
+      );
+    }
   });
 
   console.info("[WABK] WPP bridge installed");

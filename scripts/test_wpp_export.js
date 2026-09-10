@@ -8,10 +8,10 @@ const fs = require("fs");
 global.self = global;
 global.WABridge = {
   waitReady: async () => true,
-  getMessages: async (chats) =>
-    chats.map((c) => ({
-      chatId: c.id,
-      chatName: c.name,
+  getMessagesForChat: async (chat) => [
+    {
+      chatId: chat.id,
+      chatName: chat.name,
       items: [
         {
           id: "msg1",
@@ -42,7 +42,8 @@ global.WABridge = {
           filename: "",
         },
       ],
-    })),
+    },
+  ],
   downloadMedia: async (id) => {
     if (id === "msg2") {
       return { data: Buffer.from([255, 216, 255, 217]).toString("base64"), mimetype: "image/jpeg" };

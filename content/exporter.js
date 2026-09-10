@@ -97,7 +97,7 @@
     if (body) lines.push(body);
 
     if (m.isMedia || m._rawHasMedia) {
-      const name = filename || mediaFilename(m, 0);
+      const name = m.exportFilename || filename || mediaFilename(m, 0);
       if (mediaMode === "relative") {
         if (mediaKindLabel(m) === "image") lines.push(`![${name}](media/${name})`);
         else if (mediaKindLabel(m) === "video") lines.push(`📹 [${name}](media/${name})`);
@@ -290,27 +290,36 @@
           result = null;
         }
         const blob = this.mediaResultToBlob(result);
+        // Keep one filename for both MD links and ZIP entry
+        const name = mediaFilename(m, i);
+        m.exportFilename = name;
         if (!blob) {
-          files.push({ filename: mediaFilename(m, i), blob: null, missing: true });
+          files.push({ filename: name, blob: null, missing: true });
           continue;
-        }
-        // pick extension from mime
-        let name = mediaFilename(m, i);
-        if (blob.type) {
-          const sub = blob.type.split("/")[1] || "";
-          const map = { jpeg: "jpg", "png": "png", "webp": "webp", "mp4": "mp4", ogg: "ogg", "3gpp": "3gp" };
-          const ext = map[sub] || sub.split("+")[0] || name.split(".").pop();
-          name = name.replace(/\.[^.]+$/, "") + "." + ext;
         }
         files.push({ filename: name, blob });
       }
       return files;
     },
 
+    safeDownload(blob, filename, results, chatName, extra) {
+      try {
+        downloadBlob(blob, filename);
+        results.push({ chat: chatName, file: filename, ...(extra || {}) });
+        return true;
+      } catch (e) {
+        results.push({
+          chat: chatName,
+          file: null,
+          messages: (extra && extra.messages) || 0,
+          error: "下载失败: " + e,
+        });
+        return false;
+      }
+    },
+
     /**
-     * Export one or more chats fetched via WPP bridge.
-     * @param {Array} chats [{id, name}]
-     * @param {object} opts { formats, includeMedia }
+     * Export one or more chats via WPP — ONE chat per bridge call.
      */
     async exportChats(chats, opts, onProgress) {
       const formats = opts.formats || ["md", "zip"];
@@ -329,87 +338,112 @@
         return results;
       }
 
-      if (onProgress) onProgress("读取消息…");
-      let bundles;
-      try {
-        bundles = await WABridge.getMessages(chats, -1);
-      } catch (e) {
-        results.push({
-          chat: "-",
-          file: null,
-          messages: 0,
-          error: "getMessages 失败: " + e,
-        });
-        return results;
-      }
-      if (!bundles || !bundles.length) {
-        results.push({
-          chat: "-",
-          file: null,
-          messages: 0,
-          error: "WPP 返回空消息列表",
-        });
-        return results;
-      }
+      for (let ci = 0; ci < chats.length; ci++) {
+        const chat = chats[ci];
+        const label = `[${ci + 1}/${chats.length}] ${chat.name || chat.id}`;
+        if (onProgress) onProgress(`${label}: 读取消息…`);
 
-      for (const bundle of bundles) {
-        const chatMeta = { title: bundle.chatName, chatId: bundle.chatId, id: bundle.chatId };
-        let messages = bundle.items || [];
-        const base = safeFilename(bundle.chatName);
-        const stamp = new Date().toISOString().slice(0, 10);
-
-        if (!messages.length) {
+        let bundle;
+        try {
+          const list = await WABridge.getMessagesForChat(chat, -1, 120000);
+          bundle = list && list[0];
+        } catch (e) {
           results.push({
-            chat: bundle.chatName,
+            chat: chat.name || chat.id,
             file: null,
             messages: 0,
-            error: "该聊天无消息",
+            error: "getMessages 失败: " + e,
           });
           continue;
         }
 
+        if (!bundle || !bundle.items || !bundle.items.length) {
+          results.push({
+            chat: chat.name || chat.id,
+            file: null,
+            messages: 0,
+            error: "WPP 返回空消息（该聊天可能无历史或 id 无效）",
+          });
+          continue;
+        }
+
+        const chatMeta = {
+          title: bundle.chatName || chat.name,
+          chatId: bundle.chatId || chat.id,
+          id: bundle.chatId || chat.id,
+        };
+        let messages = bundle.items;
+        const base = safeFilename(chatMeta.title);
+        const stamp = new Date().toISOString().slice(0, 10);
+
         let mediaFiles = [];
         if (includeMedia) {
-          if (onProgress) onProgress(`${bundle.chatName}: 下载媒体…`);
-          mediaFiles = await this.fetchMediaForMessages(messages, (msg, d, t) => {
-            if (onProgress) onProgress(`${bundle.chatName}: ${msg}`);
+          if (onProgress) onProgress(`${label}: 下载媒体…`);
+          mediaFiles = await this.fetchMediaForMessages(messages, (msg) => {
+            if (onProgress) onProgress(`${label}: ${msg}`);
           });
         } else {
-          messages = messages.map((m) => ({ ...m, isMedia: false, _rawHasMedia: false }));
+          messages = messages.map((m) => ({
+            ...m,
+            isMedia: false,
+            _rawHasMedia: false,
+          }));
         }
 
         if (formats.includes("md")) {
           const md = this.toMarkdown(chatMeta, messages, { mediaMode: "names" });
-          const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-          downloadBlob(blob, `${base}_${stamp}.md`);
-          results.push({ chat: bundle.chatName, file: `${base}_${stamp}.md`, messages: messages.length });
+          this.safeDownload(
+            new Blob([md], { type: "text/markdown;charset=utf-8" }),
+            `${base}_${stamp}.md`,
+            results,
+            chatMeta.title,
+            { messages: messages.length }
+          );
         }
 
         if (formats.includes("txt")) {
-          const blob = new Blob([this.toTxt(chatMeta, messages)], {
-            type: "text/plain;charset=utf-8",
-          });
-          downloadBlob(blob, `${base}_${stamp}.txt`);
-          results.push({ chat: bundle.chatName, file: `${base}_${stamp}.txt`, messages: messages.length });
+          this.safeDownload(
+            new Blob([this.toTxt(chatMeta, messages)], { type: "text/plain;charset=utf-8" }),
+            `${base}_${stamp}.txt`,
+            results,
+            chatMeta.title,
+            { messages: messages.length }
+          );
         }
 
         if (formats.includes("json")) {
-          const blob = new Blob([this.toJson(chatMeta, messages)], { type: "application/json" });
-          downloadBlob(blob, `${base}_${stamp}.json`);
-          results.push({ chat: bundle.chatName, file: `${base}_${stamp}.json`, messages: messages.length });
+          this.safeDownload(
+            new Blob([this.toJson(chatMeta, messages)], { type: "application/json" }),
+            `${base}_${stamp}.json`,
+            results,
+            chatMeta.title,
+            { messages: messages.length }
+          );
         }
 
         if (formats.includes("zip")) {
-          const zipBlob = await this.toZip(chatMeta, messages, mediaFiles, (msg, d, t) => {
-            if (onProgress) onProgress(`${bundle.chatName}: ${msg}`);
-          });
-          downloadBlob(zipBlob, `${base}_${stamp}_backup.zip`);
-          results.push({
-            chat: bundle.chatName,
-            file: `${base}_${stamp}_backup.zip`,
-            messages: messages.length,
-            media: mediaFiles.filter((f) => f.blob).length,
-          });
+          try {
+            const zipBlob = await this.toZip(chatMeta, messages, mediaFiles, (msg) => {
+              if (onProgress) onProgress(`${label}: ${msg}`);
+            });
+            this.safeDownload(
+              zipBlob,
+              `${base}_${stamp}_backup.zip`,
+              results,
+              chatMeta.title,
+              {
+                messages: messages.length,
+                media: mediaFiles.filter((f) => f.blob).length,
+              }
+            );
+          } catch (e) {
+            results.push({
+              chat: chatMeta.title,
+              file: null,
+              messages: messages.length,
+              error: "ZIP 失败: " + e,
+            });
+          }
         }
       }
 
