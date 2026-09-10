@@ -4,41 +4,33 @@
   color: #fff !important;
 }
 
-.wabk-toolbar-btn {
+/* Header button — absolute inside #main header, never touches left nav */
+.wabk-header-btn {
+  position: absolute !important;
+  top: 50% !important;
+  right: 12px !important;
+  transform: translateY(-50%) !important;
+  z-index: 40 !important;
+  margin: 0 !important;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  margin: 0 4px;
-  border: 0;
-  border-radius: 50%;
-  background: #25d366;
-  color: #fff;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-  position: relative;
-  z-index: 30;
+  width: 34px !important;
+  height: 34px !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: #25d366 !important;
+  color: #fff !important;
+  cursor: pointer !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18) !important;
   flex: 0 0 auto;
 }
 
-.wabk-toolbar-btn:hover {
-  background: #1ebe5b;
-  transform: scale(1.06);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+.wabk-header-btn:hover {
+  background: #1ebe5b !important;
 }
 
-.wabk-toolbar-btn:active {
-  transform: scale(0.96);
-}
-
-.wabk-toolbar-btn .wabk-icon {
-  display: flex;
-  line-height: 0;
-}
-
-/* Floating entry — always on screen, right edge */
+/* Floating entry — always on screen, right edge (does not affect left nav) */
 .wabk-float-btn {
   position: fixed !important;
   top: 88px !important;

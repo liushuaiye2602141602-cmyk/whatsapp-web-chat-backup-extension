@@ -44,35 +44,17 @@
 
     ensureHeaderButton() {
       if (this.toolbarBtn && document.contains(this.toolbarBtn)) return;
-      const header =
-        document.querySelector("#main header") ||
-        document.querySelector('[data-testid="conversation-header"]') ||
-        document.querySelector("header");
+      // ONLY inject into the conversation header inside #main.
+      // Never fall back to page-level <header> — that can hit the left nav / app chrome
+      // and collapse WhatsApp's sidebar.
+      const header = document.querySelector("#main header");
       if (!header) return;
-
-      // Prefer the right-side icon cluster (call / video / search / more)
-      let action = null;
-      const candidates = Array.from(header.querySelectorAll("div")).filter((div) => {
-        const btns = div.querySelectorAll('[role="button"], button');
-        if (btns.length < 2) return false;
-        // right-ish cluster
-        const r = div.getBoundingClientRect();
-        const h = header.getBoundingClientRect();
-        return r.left > h.left + h.width * 0.45;
-      });
-      candidates.sort((a, b) => {
-        const sa = a.querySelectorAll('[role="button"], button').length;
-        const sb = b.querySelectorAll('[role="button"], button').length;
-        return sb - sa;
-      });
-      action = candidates[0] || null;
-      if (!action) {
-        action = header.querySelector('[role="button"]')?.parentElement || header;
-      }
+      const hr = header.getBoundingClientRect();
+      if (hr.width < 80 || hr.height < 20) return;
 
       const btn = el("button", {
         type: "button",
-        class: "wabk-toolbar-btn wabk-green",
+        class: "wabk-toolbar-btn wabk-green wabk-header-btn",
         id: "wabk-header-btn",
         title: "WA Chats Backup Pro — 打开面板",
         "aria-label": "WA Chats Backup Pro",
@@ -82,18 +64,13 @@
           this.togglePanel();
         },
       });
-      btn.innerHTML = `<span class="wabk-icon"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm.5-13H11v6l5.2 3.1.8-1.3-4.5-2.6z"/></svg></span>`;
+      btn.innerHTML = `<span class="wabk-icon"><svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm.5-13H11v6l5.2 3.1.8-1.3-4.5-2.6z"/></svg></span>`;
       try {
-        // sit with other header icons, before overflow "⋮"
-        const last = action.lastElementChild;
-        if (last) action.insertBefore(btn, last);
-        else action.appendChild(btn);
+        // Absolutely positioned inside #main header — does not restructure WA icon clusters
+        header.style.position = header.style.position || "relative";
+        header.appendChild(btn);
       } catch {
-        try {
-          header.appendChild(btn);
-        } catch {
-          /* ignore */
-        }
+        /* ignore */
       }
       this.toolbarBtn = btn;
     },
@@ -188,7 +165,11 @@
       STATE.open = open;
       const panel = this.buildPanel();
       panel.setAttribute("data-open", open ? "true" : "false");
-      if (open) this.refreshChats();
+      if (open) {
+        // Lazy-load WPP only when user actually needs it
+        WABridge.inject();
+        this.refreshChats();
+      }
     },
 
     togglePanel() {

@@ -1,5 +1,6 @@
 /**
- * Bootstrap: inject WPP + UI on WhatsApp Web.
+ * Bootstrap UI first. WPP library is injected only when user opens the panel
+ * — avoids breaking WhatsApp layout (e.g. left nav) on page load.
  */
 (function () {
   "use strict";
@@ -7,14 +8,23 @@
   window.__WABK_LOADED__ = true;
 
   function boot() {
-    WABridge.inject();
+    // UI only — no WPP inject yet
     WAUI.ensureToolbarButton();
     WAUI.buildPanel();
 
-    const obs = new MutationObserver(() => {
-      WAUI.ensureToolbarButton();
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
+    // Throttled, scoped re-inject when conversation header appears/changes
+    let timer = null;
+    const schedule = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        WAUI.ensureHeaderButton();
+      }, 400);
+    };
+
+    const main = document.querySelector("#main") || document.body;
+    const obs = new MutationObserver(schedule);
+    obs.observe(main, { childList: true, subtree: false });
 
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (!msg || !msg.type) return;
@@ -29,6 +39,7 @@
         return true;
       }
       if (msg.type === "WABK_STATUS") {
+        WABridge.inject();
         WABridge.isMainReady().then((ready) => {
           sendResponse({
             ok: true,
@@ -41,7 +52,7 @@
       }
     });
 
-    console.info("[WA Chats Backup Pro] ready (WPP bridge)");
+    console.info("[WA Chats Backup Pro] UI ready (WPP lazy)");
   }
 
   if (document.readyState === "loading") {
